@@ -5,7 +5,7 @@ import Workflow from "../models/workflow.model.js";
 import mongoose from "mongoose";
 import { Trigger, TriggerAction } from "../models/trigger.model.js";
 import { generateSlug } from "../helpers/slug.js";
-import { Node } from "../models/node.models.js";
+import { Node, NodeAction } from "../models/node.models.js";
 
 /**
  * Get all workflows of user
@@ -213,6 +213,20 @@ export async function updateWorkflow(req: Request, res: Response) {
       )
     }
 
+
+    for(let i=0;i<requestedNodes.length;i++){
+        const nodeAction=await NodeAction.findOne({_id:new mongoose.Types.ObjectId(requestedNodes[i].nodeActionId)})
+        if(!nodeAction){
+          return res.status(404).json(
+            new ApiResponse(false,`Invalid nodeActionId,Requested action is not found`)
+          )
+        } else if(!nodeAction.publicallyAvailaible){
+          return res.status(400).json(
+            new ApiResponse(false, `Requested action currently unavailaible try again later`)
+          )
+        }
+    }
+
     const trigger = await Trigger.create({
       triggerActionId,
       workflowId: existingWorkflow._id,
@@ -223,7 +237,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     requestedTrigger.triggerId = trigger._id;
 
     //creating nodes object
-    const createdNodesMap=new Map();
+    const createdNodesMap = new Map();
 
     const noOfNodes = requestedNodes.length;
 
@@ -232,8 +246,8 @@ export async function updateWorkflow(req: Request, res: Response) {
         if (requestedNodes[j].nodeId) continue;
 
         //checking if all the prerequisites of requestedNodes[j] are already created
-        const { prerequisiteNodesIdentityNos,nodeActionId:receivedNodeActionId } = requestedNodes[j]
- 
+        const { prerequisiteNodesIdentityNos, nodeActionId, data } = requestedNodes[j]
+
         if (!prerequisiteNodesIdentityNos) {
           return res.status(400).json(
             new ApiResponse(false, `Invalid data provided,no prerequisite node found for a node`)
@@ -245,7 +259,7 @@ export async function updateWorkflow(req: Request, res: Response) {
           //doesnt matter because trigger is always created before reaching this point
         }
         let allPrerequisiteNodesCreated = true
-        const prerequisiteNodesIdentityNos = []
+        const prerequisiteNodesDBIds = []
 
         //going to all the IdentityNos
         for (let k = 0; k < prerequisiteNodesIdentityNos.length; k++) {
@@ -254,7 +268,7 @@ export async function updateWorkflow(req: Request, res: Response) {
             break;
           } else {
             const createdNode = createdNodesMap.get(prerequisiteNodesIdentityNos[k])
-            prerequisiteNodesIdentityNos.push(createdNode._id)
+            prerequisiteNodesDBIds.push(createdNode._id)
           }
         }
 
@@ -263,44 +277,54 @@ export async function updateWorkflow(req: Request, res: Response) {
         }
 
         //create this node then
-        let triggerId=null;
-        if(prerequisiteNodesIdentityNos.includes(requestedTrigger.identityNo)){
-          triggerId=requestedTrigger.triggerId
+        let triggerId = null;
+        if (prerequisiteNodesIdentityNos.includes(requestedTrigger.identityNo)) {
+          triggerId = requestedTrigger.triggerId
         }
 
+        const node = await Node.create({
+          nodeActionId,
+          workflowId: existingWorkflow._id,
+          data: data ?? {},
+          prerequisiteNodes: prerequisiteNodesDBIds,
+          triggerId
+        })
 
-
-        //*
-
-        // const prerequisiteIdentityNosSet = new Set(prerequisiteNodesIdentityNos)
-        // const createdObjects = []
-        // let triggerId = null
-
-        // if (prerequisiteIdentityNosSet.has(requestedTrigger.identityNo)) {
-        //   prerequisiteIdentityNosSet.remove(requestedTrigger.identityNo)
-        //   triggerId = requestedTrigger.triggerId;
-        // }
-
-        // for (let k = 0; k < noOfNodes; k++) {
-        //   if (requestedNodes[k].nodeId && prerequisiteIdentityNosSet.has(requestedNodes[i].identityNo)) {
-        //     prerequisiteIdentityNosSet.delete(requestedNodes[k].identityNo)
-        //     createdObjects.push(requestedNodes[k])
-        //   }
-        // }
-
-        // if(prerequisiteIdentityNosSet.size==0){
-        //   //all the prerequisite nodes are created 
-        //   const prerequisiteNodesNodeId=createdObjects.map((obj)=>obj.nodeId)
-
-        //   const node = await Node.create({
-        //     nodeActionId:requestedNodes[j]
-        //   })
+        requestedNodes[j].nodeId=node._id
+        createdNodesMap.set(requestedNodes[j].identityNo, node)
       }
     }
+
+    //check if all the nodes are created
+    for(let i=0;i<noOfNodes;i++){
+      if(!requestedNodes[i].nodeId){
+        return res.status(400).json(
+          new ApiResponse(false,`Unable to form valid workflow,recheck canvas`)
+        )
+      }
+    }
+
+    const triggerId=requestedTrigger.triggerId;
+    const nodes=[]
+    for (const [identityNo, node] of createdNodesMap) {
+      nodes.push(new mongoose.Types.ObjectId(node._id))
+    }
+
+    existingWorkflow.trigger=triggerId
+    existingWorkflow.nodes=nodes;
+    existingWorkflow.active=true
+    await existingWorkflow.save()
+
+    return res.status(200).json(
+        new ApiResponse(true,`Workflow updated successfully`,existingWorkflow)
+    )
+    
+  } catch (error) {
+    console.log('ERROR :: updateWorkflow : ',error);
+    
+    return res.status(500).json(
+        new ApiResponse(false,`Failed to update the workflow`)
+    )
   }
 
-
-  } catch (error) {
-
-}
 }

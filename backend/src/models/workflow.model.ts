@@ -1,47 +1,50 @@
-import mongoose,{Schema} from "mongoose"
-const ObjectId=Schema.Types.ObjectId;
+import mongoose, { Schema } from "mongoose"
+const ObjectId = Schema.Types.ObjectId;
 
-const nodeObj=new mongoose.Schema({
-  nodeId:{
-    type:ObjectId,
-    ref:"Node",
-    required:true
+const nodeObj = new mongoose.Schema({
+  nodeId: {
+    type: ObjectId,
+    ref: "Node",
+    required: true
   },
-  prerequisiteNodes:[{
-    type:String,
+  prerequisiteNodes: [{
+    type: String,
   }],
 })
 
 const workflowSchema = new Schema({
-  name :{
-    type:String,
-    required:true,
-    unique:true
+  name: {
+    type: String,
+    required: true,
+    unique: true
   },
-  slug:{
-    type:String,
-    required:true
+  slug: {
+    type: String,
+    required: true
   },
-  owner:{
-    type:ObjectId,
-    ref:"User",
-    required:true
+  owner: {
+    type: ObjectId,
+    ref: "User",
+    required: true
   },
-  trigger:{
-    type:ObjectId,
-    ref:"Trigger",
-    default:null
+  trigger: {
+    type: ObjectId,
+    ref: "Trigger",
+    default: null
   },
-  nodes:{
-    type:[nodeObj],
+  nodes: {
+    type: [{
+      type: ObjectId,
+      ref: "Node"
+    }],
     default:[]
   },
-  active:{
-    type:Boolean,
-    default:true
+  active: {
+    type: Boolean,
+    default: true
   }
 })
 
-const Workflow = mongoose.model("Workflow",workflowSchema);
+const Workflow = mongoose.model("Workflow", workflowSchema);
 
 export default Workflow;
