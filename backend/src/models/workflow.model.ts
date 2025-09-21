@@ -1,7 +1,6 @@
 import mongoose,{Schema} from "mongoose"
 const ObjectId=Schema.Types.ObjectId;
 
-
 const nodeObj=new mongoose.Schema({
   nodeId:{
     type:ObjectId,
