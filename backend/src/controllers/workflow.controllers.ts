@@ -5,7 +5,7 @@ import Workflow from "../models/workflow.model.js";
 import mongoose from "mongoose";
 import { Trigger, TriggerAction } from "../models/trigger.model.js";
 import { generateSlug } from "../helpers/slug.js";
-import { Node, NodeAction } from "../models/node.models.js";
+import { Node, NodeAction } from "../models/node.model.js";
 
 /**
  * Get all workflows of user
