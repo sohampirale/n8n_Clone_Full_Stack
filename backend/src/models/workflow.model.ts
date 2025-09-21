@@ -30,9 +30,16 @@ const workflowSchema = new Schema({
   trigger:{
     type:ObjectId,
     ref:"Trigger",
-    required:true
+    default:null
   },
-  nodes:[nodeObj]
+  nodes:{
+    type:[nodeObj],
+    default:[]
+  },
+  active:{
+    type:Boolean,
+    default:true
+  }
 })
 
 const Workflow = mongoose.model("Workflow",workflowSchema);

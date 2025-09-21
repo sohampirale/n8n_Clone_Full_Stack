@@ -36,6 +36,16 @@ const nodeSchema=new Schema({
     type:Schema.Types.Mixed,
     default:{}
   },
+  prerequisiteNodes:{
+    type:[ObjectId],
+    ref:"Node",
+    default:[]
+  },
+  triggerId:{
+    type:ObjectId,
+    ref:"Trigger",
+    default:null
+  }
 })
 
 const nodeInstanceSchema= new Schema({
