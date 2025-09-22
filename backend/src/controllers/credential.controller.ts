@@ -3,6 +3,7 @@ import { Credential, CredentialForm } from "../models/credential.model.js";
 import ApiResponse from "../lib/ApiResponse.js";
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
+import { resolveSoa } from "dns";
 
 export async function getAllAvailaibleCredentials(req:Request,res:Response){
   try {
@@ -122,48 +123,75 @@ export async function createCredential(req:Request,res:Response){
  * 13.return response
  */
 
-export async function createCredential(req:Request,res:Response){
+export async function updateCredential(req:Request,res:Response){
   try {
-    const {_id} = req.user
-    const userId = new mongoose.Types.ObjectId(_id)
-
-    if(! await User.exists({_id:userId})){
+    const {credentialId:receivedCredentialId,data,authorizedUsers}=req.body;
+    const credentialId= new mongoose.Types.ObjectId(receivedCredentialId)
+    const {_id}=req.user;
+    const userId= new mongoose.Types.ObjectId(_id)
+    
+    if(!await User.exists({_id:userId})){
       return res.status(404).json(
-        new ApiResponse(false,`User does not exist anymore in the database`)
+        new ApiResponse(false,`User does not exist anymore`)
       )
     }
-    const {credentialFormId:receivedCredentialFormId,data}=req.body;
-    const credentialFormId = new mongoose.Types.ObjectId(receivedCredentialFormId)
-
-    const credentialForm = await CredentialForm.findById(credentialFormId)
-
-    if(!credentialForm){
+    const credential = await Credential.findById(credentialId)
+    if(!credential){
       return res.status(404).json(
-        new ApiResponse(false,`Invalid credentialFormId,credential form not found`)
+        new ApiResponse(false,`Credential not found with given credentialId`)
       )
-    } else if(!credentialForm.publicallyAvailaible){
+    } else if(!credential.owner.equals(userId)){
       return res.status(400).json(
-        new ApiResponse(false,`Requested credential form currently unavailaible`)
+        new ApiResponse(false,`You dont have update access to this credential`)
       )
     }
-    const requiredFields=credentialForm.requiredFields
 
-    for(let i=0;i<requiredFields.length;i++){
-      if(typeof data[requiredFields[i]]!=='string' || !data[requiredFields[i]]){
-        return res.status(400).json(
-          new ApiResponse(false,`Invalid/Insufficient data provided, ${requiredFields[i]} not found`)
+    if(data){
+      const credentialFormId=credential.credentialFormId
+      const credentialForm = await CredentialForm.findById(credentialFormId)
+      if(!credentialForm){
+        return res.status(404).json(
+          new ApiResponse(false,`Credential form not found for given credentialId`)
         )
       }
+      const requiredFields=credentialForm.requiredFields
+      const obj={
+
+      }
+      for(let i=0;i<requiredFields.length;i++){
+        if(!data[requiredFields[i]] || typeof data[requiredFields[i]] !=='string'){
+          return res.status(400).json(
+            new ApiResponse(false,`Invalid/Insufficient data provided for the field :  ${requiredFields[i]}`)
+          )
+        } else {
+          obj[requiredFields[i]]=data[requiredFields[i]]
+        }
+      }
+      credential.data=obj
     }
-    const credential = await Credential.create({
-      credentialFormId,
-      owner:userId,
-      data,
-      authorizedUsers:[]
-    })
+
+    if(authorizedUsers){
+      if(!Array.isArray(authorizedUsers)){
+        return res.status(400).json(
+          new ApiResponse(false,`Invalid data provided`)
+        )
+      }
+      const authorizedUsersIds=authorizedUsers.map((_id)=>new mongoose.Types.ObjectId(_id))
+
+      const count = await User.countDocuments({ _id: { $in: authorizedUsersIds } });
+
+      if(count!=authorizedUsersIds.length){
+        return res.status(404).json(
+          new ApiResponse(false,`All requested authorizedUsers do not exist in db anymore`)
+        )
+      }
+      credential.authorizedUsers=authorizedUsersIds
+    }
+
+    await credential.save()
 
     return res.status(201).json(
-      new ApiResponse(true,`New credential added successfully`,credential)
+      new ApiResponse(true,`Credential updated successfully`,credential)
     )
 
   } catch (error) {

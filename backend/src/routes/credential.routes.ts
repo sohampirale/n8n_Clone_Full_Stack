@@ -1,5 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
+import { createCredential, getAllAvailaibleCredentials, getAllCredentialsOfUser, updateCredential } from "../controllers/credential.controller.js";
 const credentialsRouter = Router()
 
 credentialsRouter.route("./")

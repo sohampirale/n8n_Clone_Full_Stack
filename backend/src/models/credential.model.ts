@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose"
 const ObjectId = Schema.Types.ObjectId;
 
+/* might be necessary for accepting credentials with few optional fields
 const requiredFieldsSchema = new Schema({
   name: {
     type: String,
@@ -12,7 +13,7 @@ const requiredFieldsSchema = new Schema({
   }
 }, {
   timestamps: true
-})
+})*/
 
 const credentialFormSchema = new Schema({
   name: {
@@ -20,10 +21,16 @@ const credentialFormSchema = new Schema({
     required: true,
     unique: true
   },
-  requiredFields: [requiredFieldsSchema],
+  requiredFields: [{
+    type:String
+  }],
   publicallyAvailaible: {
     type: Boolean,
-    defauly: true
+    default: true
+  },
+  baseUrl:{
+    type:String,
+    default:null
   }
 }, {
   timestamps: true

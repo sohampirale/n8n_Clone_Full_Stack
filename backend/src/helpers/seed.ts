@@ -1,3 +1,4 @@
+import { CredentialForm } from "../models/credential.model.js";
 import { NodeAction } from "../models/node.model.js";
 import { TriggerAction } from "../models/trigger.model.js";
 
@@ -39,5 +40,25 @@ export async function createNodeActions() {
 
   } catch (error) {
     console.log('Failed to create the node actions : ', error);
+  }
+}
+
+export async function createCredentialForms() {
+  const credentialFormsData = [{
+    name: `telegram`,
+    requiredFields:["API_KEY"],
+    publicallyAvailaible:true
+  }, {
+    name: `gmail`,
+    requiredFields:["RESEND_API_KEY"],
+    publicallyAvailaible:true
+  }]
+
+  try {
+    await CredentialForm.insertMany(credentialFormsData)
+    console.log('All credential forms created successfully');
+
+  } catch (error) {
+    console.log('Failed to create the credential forms : ', error);
   }
 }
