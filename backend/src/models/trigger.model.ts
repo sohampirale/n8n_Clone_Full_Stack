@@ -19,6 +19,8 @@ const triggerActionSchema=new Schema({
     type:Boolean,
     default:true
   }
+},{
+  timestamps:true
 })
 
 const triggerSchema=new Schema({
@@ -36,6 +38,8 @@ const triggerSchema=new Schema({
     type:Schema.Types.Mixed,
     default:{}
   },
+},{
+  timestamps:true
 })
 
 const triggerInstanceSchema= new Schema({
@@ -69,6 +73,8 @@ const triggerInstanceSchema= new Schema({
     type:Schema.Types.Mixed,
     default:undefined
   }
+},{
+  timestamps:true
 })
 
 export const TriggerAction = mongoose.model("TriggerAction",triggerActionSchema)

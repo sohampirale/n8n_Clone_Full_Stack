@@ -17,6 +17,8 @@ const userSchema = new Schema({
     type:String,
     required:true,
   }
+},{
+  timestamps:true
 })
 
 userSchema.methods.comparePassword = async function (candidatePassword) {

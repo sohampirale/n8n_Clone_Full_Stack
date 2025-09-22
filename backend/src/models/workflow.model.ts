@@ -43,6 +43,8 @@ const workflowSchema = new Schema({
     type: Boolean,
     default: true
   }
+},{
+  timestamps:true
 })
 
 const Workflow = mongoose.model("Workflow", workflowSchema);
