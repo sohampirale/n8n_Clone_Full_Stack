@@ -27,7 +27,7 @@ export async function getAllAvailaibleCredentials(req:Request,res:Response){
  * 4.return all credentials of user
  */
 
-export async function getAllCredentialsOfUser(req:Request,res:Response){
+export async function getAllCredentialsOfUser(req:Request,res:Response){  
   try {
     const {_id}=req.user;
     const userId=new mongoose.Types.ObjectId(_id)
@@ -40,7 +40,7 @@ export async function getAllCredentialsOfUser(req:Request,res:Response){
       owner:userId
     })
     return res.status(200).json(
-      new ApiResponse(true,`All user credentials fetched sucessfully`)
+      new ApiResponse(true,`All user credentials fetched sucessfully`,allCredentials)
     )
   } catch (error) {
     return res.status(500).json(
@@ -148,7 +148,7 @@ export async function updateCredential(req:Request,res:Response){
       )
     }
 
-    if(data){
+    if(data){      
       const credentialFormId=credential.credentialFormId
       const credentialForm = await CredentialForm.findById(credentialFormId)
       if(!credentialForm){

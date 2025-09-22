@@ -19,7 +19,7 @@ export async function getAllWorkflowsOfUser(req: Request, res: Response) {
     const { _id } = req.user;
     const userId = new mongoose.Types.ObjectId(_id)
 
-    const exist = await User.exists({
+    const exists = await User.exists({
       _id: userId
     })
 
@@ -170,14 +170,14 @@ export async function updateWorkflow(req: Request, res: Response) {
     await existingWorkflow.save()
 
     const existingNodes = existingWorkflow.nodes
-    const existingTrigger = existingWorkflow.trigger;
+    const existingTriggerId = existingWorkflow.trigger;
 
-    if (existingTrigger) {
-      await Trigger.findByIdAndDelete(existingTrigger)
+    if (existingTriggerId) {
+      await Trigger.findByIdAndDelete(existingTriggerId)
     }
 
     if (existingNodes && existingNodes.length != 0) {
-      await Workflow.deleteMany({
+      await Node.deleteMany({
         _id: { $in: existingNodes }
       });
     }
@@ -214,17 +214,17 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
 
-    for(let i=0;i<requestedNodes.length;i++){
-        const nodeAction=await NodeAction.findOne({_id:new mongoose.Types.ObjectId(requestedNodes[i].nodeActionId)})
-        if(!nodeAction){
-          return res.status(404).json(
-            new ApiResponse(false,`Invalid nodeActionId,Requested action is not found`)
-          )
-        } else if(!nodeAction.publicallyAvailaible){
-          return res.status(400).json(
-            new ApiResponse(false, `Requested action currently unavailaible try again later`)
-          )
-        }
+    for (let i = 0; i < requestedNodes.length; i++) {
+      const nodeAction = await NodeAction.findOne({ _id: new mongoose.Types.ObjectId(requestedNodes[i].nodeActionId) })
+      if (!nodeAction) {
+        return res.status(404).json(
+          new ApiResponse(false, `Invalid nodeActionId,Requested action is not found`)
+        )
+      } else if (!nodeAction.publicallyAvailaible) {
+        return res.status(400).json(
+          new ApiResponse(false, `Requested action currently unavailaible try again later`)
+        )
+      }
     }
 
     const trigger = await Trigger.create({
@@ -239,28 +239,37 @@ export async function updateWorkflow(req: Request, res: Response) {
     //creating nodes object
     const createdNodesMap = new Map();
 
+    // createdNodesMap.set(requestedTrigger.identityNo,trigger)
+
     const noOfNodes = requestedNodes.length;
+    console.log('requestedNodes before : ', requestedNodes);
 
     for (let i = 0; i < noOfNodes; i++) { //for n time loop
       for (let j = 0; j < noOfNodes; j++) {//for all nodes everytime
         if (requestedNodes[j].nodeId) continue;
 
         //checking if all the prerequisites of requestedNodes[j] are already created
-        const { prerequisiteNodesIdentityNos, nodeActionId, data } = requestedNodes[j]
+        let { prerequisiteNodesIdentityNos, nodeActionId, data } = requestedNodes[j]
 
         if (!prerequisiteNodesIdentityNos) {
           return res.status(400).json(
-            new ApiResponse(false, `Invalid data provided,no prerequisite node found for a node`)
+            new ApiResponse(false, `Invalid data provided,no prerequisite nodes array given for a node`)
           )
         }
 
         //*
-        if (prerequisiteNodesIdentityNos.includes(requestedTrigger.identityNo)) {
-          //doesnt matter because trigger is always created before reaching this point
-        }
+
         let allPrerequisiteNodesCreated = true
         const prerequisiteNodesDBIds = []
 
+        let triggerId = null;
+
+        if (prerequisiteNodesIdentityNos.includes(requestedTrigger.identityNo)) {
+          triggerId = requestedTrigger.triggerId
+          prerequisiteNodesIdentityNos = prerequisiteNodesIdentityNos.filter(
+            (id) => id !== requestedTrigger.identityNo
+          );
+        }
         //going to all the IdentityNos
         for (let k = 0; k < prerequisiteNodesIdentityNos.length; k++) {
           if (!createdNodesMap.has(prerequisiteNodesIdentityNos[k])) {
@@ -276,12 +285,6 @@ export async function updateWorkflow(req: Request, res: Response) {
           continue;
         }
 
-        //create this node then
-        let triggerId = null;
-        if (prerequisiteNodesIdentityNos.includes(requestedTrigger.identityNo)) {
-          triggerId = requestedTrigger.triggerId
-        }
-
         const node = await Node.create({
           nodeActionId,
           workflowId: existingWorkflow._id,
@@ -290,40 +293,42 @@ export async function updateWorkflow(req: Request, res: Response) {
           triggerId
         })
 
-        requestedNodes[j].nodeId=node._id
+        requestedNodes[j].nodeId = node._id
         createdNodesMap.set(requestedNodes[j].identityNo, node)
       }
     }
 
+    console.log('requestedNodes after creating nodes : ', requestedNodes);
+
     //check if all the nodes are created
-    for(let i=0;i<noOfNodes;i++){
-      if(!requestedNodes[i].nodeId){
+    for (let i = 0; i < noOfNodes; i++) {
+      if (!requestedNodes[i].nodeId) {
         return res.status(400).json(
-          new ApiResponse(false,`Unable to form valid workflow,recheck canvas`)
+          new ApiResponse(false, `Unable to form valid workflow,recheck canvas`)
         )
       }
     }
 
-    const triggerId=requestedTrigger.triggerId;
-    const nodes=[]
+    const triggerId = requestedTrigger.triggerId;
+    const nodes = []
     for (const [identityNo, node] of createdNodesMap) {
       nodes.push(new mongoose.Types.ObjectId(node._id))
     }
 
-    existingWorkflow.trigger=triggerId
-    existingWorkflow.nodes=nodes;
-    existingWorkflow.active=true
+    existingWorkflow.trigger = triggerId
+    existingWorkflow.nodes = nodes;
+    existingWorkflow.active = true
     await existingWorkflow.save()
 
     return res.status(200).json(
-        new ApiResponse(true,`Workflow updated successfully`,existingWorkflow)
+      new ApiResponse(true, `Workflow updated successfully`, existingWorkflow)
     )
-    
+
   } catch (error) {
-    console.log('ERROR :: updateWorkflow : ',error);
-    
+    console.log('ERROR :: updateWorkflow : ', error);
+
     return res.status(500).json(
-        new ApiResponse(false,`Failed to update the workflow`)
+      new ApiResponse(false, `Failed to update the workflow`)
     )
   }
 
