@@ -3,13 +3,15 @@ import { Credential, CredentialForm } from "../models/credential.model.js";
 import ApiResponse from "../lib/ApiResponse.js";
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
-import { resolveSoa } from "dns";
 
 export async function getAllAvailaibleCredentials(req:Request,res:Response){
   try {
-    const allCredentials=await CredentialForm.find()
+    const allCredentials=await CredentialForm.find({
+      publicallyAvailaible:true
+    })
+    
     return res.status(200).json(
-      new ApiResponse(true,`All credential forms fetched successfully`)
+      new ApiResponse(true,`All credential forms fetched successfully`,allCredentials)
     )
   } catch (error) {
     return res.status(500).json(

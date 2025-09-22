@@ -7,7 +7,7 @@ workflowRouter.route("./")
   .get(authMiddleware,getAllWorkflowsOfUser)
   .post(authMiddleware,createWorkflow)
 
-
-
 workflowRouter.route('/:slug')
   .put(authMiddleware,updateWorkflow)
+
+export default workflowRouter;

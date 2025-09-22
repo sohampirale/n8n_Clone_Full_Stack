@@ -9,7 +9,7 @@ export async function userSignup(req: Request, res: Response) {
       const {username,email,password}=req.body
 
       const existingUser = await User.findOne({
-        $OR:[
+        $or:[
           {email},
           {username}
         ]
@@ -25,6 +25,11 @@ export async function userSignup(req: Request, res: Response) {
         username,
         email,
         password
+      })
+
+      const accessToken=generateAccessToken({
+        _id:user._id,
+        username
       })
 
       return res
