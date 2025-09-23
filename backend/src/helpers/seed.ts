@@ -1,6 +1,8 @@
 import { CredentialForm } from "../models/credential.model.js";
 import { NodeAction } from "../models/node.model.js";
+import { ToolForm } from "../models/tool.model.js";
 import { TriggerAction } from "../models/trigger.model.js";
+import {z} from 'zod'
 
 export async function createTriggerActions() {
   const triggerActionData = [{
@@ -60,5 +62,27 @@ export async function createCredentialForms() {
 
   } catch (error) {
     console.log('Failed to create the credential forms : ', error);
+  }
+}
+
+export async function createToolForm() {
+  const toolFormsData = [{
+    name: `fetchWhether`,
+    description:'Fetches the live temperature of a city',
+    schema:z.object({
+      cityName:z.string().describe("Name of the city whose live temperature is required")
+    }),
+    func:async function(cityName:string){
+      return Math.random()*100;
+    },
+    publicallyAvailaible:true
+  }]
+
+  try {
+    await ToolForm.insertMany(toolFormsData)
+    console.log('All tool forms created successfully');
+
+  } catch (error) {
+    console.log('Failed to create the tool forms : ', error);
   }
 }

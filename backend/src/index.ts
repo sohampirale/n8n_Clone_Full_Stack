@@ -2,7 +2,7 @@ import dotenv from "dotenv"
 dotenv.config()
 import express from "express"
 import startServer from "./helpers/startServer.js"
-import { createCredentialForms, createNodeActions, createTriggerActions } from "./helpers/seed.js"
+import { createCredentialForms, createNodeActions, createToolForm, createTriggerActions } from "./helpers/seed.js"
 import cookieParser from "cookie-parser"
 import userRouter from "./routes/user.route.js"
 import credentialsRouter from "./routes/credential.route.js"
@@ -31,4 +31,5 @@ setTimeout(()=>{
   // createNodeActions()
   // createTriggerActions()
   // createCredentialForms()
+  createToolForm()
 },5000)
