@@ -35,25 +35,39 @@ const toolFormSchema=new Schema({
   publicallyAvailaible:{
     type:Boolean,
     default:true
+  },
+  icon:{
+    type:String,
+    default:"https://imgs.search.brave.com/a3unk_Fc9CEQK0W6ZQz_IeOcEsfYhPpWxQzCPChQjYE/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly90NC5m/dGNkbi5uZXQvanBn/LzA0LzQzLzk5LzU1/LzM2MF9GXzQ0Mzk5/NTUwNF9tZEFhakxS/V2J6SkJ2S2JRdHJp/SHVuWTZwZmdUQVJB/bC5qcGc"
   }
 },{
   timestamps:true
 })
 
 const toolSchema=new Schema({
-  triggerActionId:{
+  toolFormId:{
     type:ObjectId,
-    ref:"TriggerAction",
+    ref:"ToolForm",
     required:true
+  },
+  aiNodeId:{
+    type:ObjectId,
+    ref:"Node",
+    required:true
+  },
+  additionalDescription:{
+    type:String,
+    default:""
   },
   workflowId:{
     type:ObjectId,
     ref:"Workflow",
     required:true
   },
-  agentNodeId:{
+  owner:{
     type:ObjectId,
-    ref:"Node"
+    ref:"User",
+    required:true
   },
   data:{
     type:Schema.Types.Mixed,

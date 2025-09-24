@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import { Trigger, TriggerAction } from "../models/trigger.model.js";
 import { generateSlug } from "../helpers/slug.js";
 import { Node, NodeAction } from "../models/node.model.js";
+import { Tool, ToolForm } from "../models/tool.model.js";
 
 /**
  * Get all workflows of user
@@ -137,7 +138,7 @@ export async function updateWorkflow(req: Request, res: Response) {
         new ApiResponse(false, `Invalid request,new workflow not provided`)
       )
     }
-    const { name, requestedTrigger, requestedNodes } = workflow
+    const { name, requestedTrigger, requestedNodes, requestedTools } = workflow
     if (!name || !requestedTrigger || !requestedNodes) {
       return res.status(400).json(
         new ApiResponse(false, `Invalid request,improper workflow obj provided`)
@@ -176,11 +177,15 @@ export async function updateWorkflow(req: Request, res: Response) {
       await Trigger.findByIdAndDelete(existingTriggerId)
     }
 
-    if (existingNodes && existingNodes.length != 0) {
-      await Node.deleteMany({
-        _id: { $in: existingNodes }
-      });
-    }
+    await Node.deleteMany({
+      workflowId:existingWorkflow._id
+    })
+
+    // if (existingNodes && existingNodes.length != 0) {
+    //   await Node.deleteMany({
+    //     _id: { $in: existingNodes }
+    //   });
+    // }
 
     const newSlug = generateSlug(name)
     existingWorkflow.name = name
@@ -242,7 +247,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     // createdNodesMap.set(requestedTrigger.identityNo,trigger)
 
     const noOfNodes = requestedNodes.length;
-    console.log('requestedNodes before : ', requestedNodes);
+    // console.log('requestedNodes before : ', requestedNodes);
 
     for (let i = 0; i < noOfNodes; i++) { //for n time loop
       for (let j = 0; j < noOfNodes; j++) {//for all nodes everytime
@@ -298,7 +303,7 @@ export async function updateWorkflow(req: Request, res: Response) {
       }
     }
 
-    console.log('requestedNodes after creating nodes : ', requestedNodes);
+    // console.log('requestedNodes after creating nodes : ', requestedNodes);
 
     //check if all the nodes are created
     for (let i = 0; i < noOfNodes; i++) {
@@ -306,6 +311,51 @@ export async function updateWorkflow(req: Request, res: Response) {
         return res.status(400).json(
           new ApiResponse(false, `Unable to form valid workflow,recheck canvas`)
         )
+      }
+    }
+
+    //creating Tool objects from requestedTools
+    //deleting all the old Tool objects with this workflowId
+
+    await Tool.deleteMany({
+      workflowId:existingWorkflow._id
+    })
+
+    for(let i=0;i<requestedTools.length;i++){
+      const {aiNodeIdentityNo:strAINodeIdentityNo,toolFormId,data,additionalDescription}=requestedTools[i]
+      
+      if(!aiNodeIdentityNo ){
+        return res.status(400).json(
+          new ApiResponse(false,`Invalid AI node identity no.`)
+        )
+      }
+
+      const aiNodeIdentityNo=Number(strAINodeIdentityNo);
+      
+
+      if(createdNodesMap.has(aiNodeIdentityNo)){
+        if(!await ToolForm.exists({_id:toolFormId})){
+          return res.status(404).json(
+            new ApiResponse(false,`One requested tool not found in availaible tools`)
+          )
+        }
+
+        const aiNode = createdNodesMap.get(aiNodeIdentityNo)
+
+        const tool=await Tool.create({
+          toolFormId,
+          data,
+          aiNodeId:aiNode._id,
+          owner:userId,
+          additionalDescription,
+          workflowId:existingWorkflow._id
+        })
+
+        console.log('created tool : ',tool);
+        
+      } else {
+        console.log('requested aiNodeIdentityNo not found in the createdNodesMap : ',aiNodeIdentityNo);
+        console.log('createdNodesMap : ',createdNodesMap);   
       }
     }
 
@@ -321,7 +371,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     await existingWorkflow.save()
 
     return res.status(200).json(
-      new ApiResponse(true, `Workflow updated successfully`, existingWorkflow)
+      new ApiResponse(true, `Workflow updated successfully!`, existingWorkflow)
     )
 
   } catch (error) {

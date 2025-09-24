@@ -47,12 +47,12 @@ export async function createNodeActions() {
 
 export async function createCredentialForms() {
   const credentialFormsData = [{
-    name: `telegram`,
+    name: `cohere`,
     requiredFields:["API_KEY"],
     publicallyAvailaible:true
   }, {
-    name: `gmail`,
-    requiredFields:["RESEND_API_KEY"],
+    name: `gemini`,
+    requiredFields:["API_KEY"],
     publicallyAvailaible:true
   }]
 
@@ -67,13 +67,13 @@ export async function createCredentialForms() {
 
 export async function createToolForm() {
   const toolFormsData = [{
-    name: `fetchWhether`,
-    description:'Fetches the live temperature of a city',
+    name: `serpAPI`,
+    description:'Does web serach on a given query using serpAPI and returns result',
     schema:z.object({
-      cityName:z.string().describe("Name of the city whose live temperature is required")
+      query:z.string().describe("query used by serpAPI to do web search and return result/json")
     }),
     func:async function(cityName:string){
-      return Math.random()*100;
+      return "Some info from the serpAPI";
     },
     publicallyAvailaible:true
   }]
