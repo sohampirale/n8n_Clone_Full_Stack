@@ -20,6 +20,7 @@ const triggerActionSchema=new Schema({
     default:true
   }
 },{
+
   timestamps:true
 })
 

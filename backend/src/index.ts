@@ -9,10 +9,17 @@ import credentialsRouter from "./routes/credential.route.js"
 import workflowRouter from "./routes/workflow.route.js"
 import triggerRouter from "./routes/trigger.route.js"
 import actionRouter from "./routes/action.route.js"
+import toolsRouter from "./routes/tool.route.js"
+import cors from "cors"
 
 const app =express()
 app.use(express.json())
 app.use(cookieParser())
+
+app.use(cors({
+  origin: process.env.FRONTEND_URL, 
+  credentials: true, 
+}));
 
 app.get("/",(req,res)=>{
   res.send("Hello World")
@@ -23,6 +30,7 @@ app.use("/api/v1/credential",credentialsRouter)
 app.use("/api/v1/workflow",workflowRouter)
 app.use("/api/v1/trigger",triggerRouter)
 app.use("/api/v1/action",actionRouter)
+app.use("/api/v1/tool",toolsRouter)
 
 startServer(app)
 
