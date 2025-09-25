@@ -1,6 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
-import { createCredential, getAllAvailaibleCredentials, getAllCredentialsOfUser, updateCredential } from "../controllers/credential.controller.js";
+import { createCredential, getAllAvailaibleCredentialForms, getAllCredentialsOfUser, updateCredential } from "../controllers/credential.controller.js";
 const credentialsRouter = Router()
 
 credentialsRouter.route("/")
@@ -9,6 +9,6 @@ credentialsRouter.route("/")
   .put(authMiddleware,updateCredential)
 
 credentialsRouter.route('/list')
-  .get(getAllAvailaibleCredentials)
+  .get(getAllAvailaibleCredentialForms)
 
 export default credentialsRouter;

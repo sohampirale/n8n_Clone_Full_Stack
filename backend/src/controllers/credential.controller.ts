@@ -4,7 +4,7 @@ import ApiResponse from "../lib/ApiResponse.js";
 import mongoose from "mongoose";
 import User from "../models/user.model.js";
 
-export async function getAllAvailaibleCredentials(req:Request,res:Response){
+export async function getAllAvailaibleCredentialForms(req:Request,res:Response){
   try {
     const allCredentials=await CredentialForm.find({
       publicallyAvailaible:true
@@ -28,21 +28,44 @@ export async function getAllAvailaibleCredentials(req:Request,res:Response){
  */
 
 export async function getAllCredentialsOfUser(req:Request,res:Response){  
+  console.log('inside getAllCredentialsOfUser');
+  
   try {
     const {_id}=req.user;
     const userId=new mongoose.Types.ObjectId(_id)
-    if(!await User.exists({_id:userId})){
+    
+    if(!await User.exists({_id})){
+      console.log('user does not exists');
+      
       return res.status(404).json(
         new ApiResponse(false,`User does not exists anymore`)
       )
     }
-    const allCredentials=await Credential.find({
-      owner:userId
-    })
+    
+    const allCredentials=await Credential.aggregate([
+      {
+        $match:{
+          owner:userId
+        }
+      },{
+        $lookup:{
+          from:"credentialforms",
+          localField:"credentialFormId",
+          foreignField:"_id",
+          as:"CredentialForm"
+        }
+      }
+    ])
+
+    console.log('allCredentials : ',allCredentials);
+    
     return res.status(200).json(
       new ApiResponse(true,`All user credentials fetched sucessfully`,allCredentials)
     )
+
   } catch (error) {
+    console.log('ERROR :: getAllCredentialsOfUser : ',error  );
+    
     return res.status(500).json(
       new ApiResponse(false,`Failed to retrive all user credentials`)
     )
