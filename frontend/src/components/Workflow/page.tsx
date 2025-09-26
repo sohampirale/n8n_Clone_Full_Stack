@@ -3,7 +3,7 @@ import '@xyflow/react/dist/style.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Background, Controls, Position, Handle, ReactFlowProvider, NodeTypes } from '@xyflow/react';
 import { axiosInstance } from "@/helpers/axios";
-import { ReactFlowNode, ReactFlowAINode } from './ReactFlow/Nodes';
+import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode } from './ReactFlow/Nodes';
 
 // const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }];
 // const initialNodes = [
@@ -11,8 +11,6 @@ import { ReactFlowNode, ReactFlowAINode } from './ReactFlow/Nodes';
 //   { id: '2', type: 'AINode', position: { x: 100, y: 125 }, data: { label: 'AI Agent', prompt: 'Generate a response' } },
 // ];
 
-const initialEdges = [];
-const initialNodes = [];
 
 // function WebHookNode({ data }) {
 //   return (
@@ -36,31 +34,31 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   const [cnt, setCnt] = useState(4)
   const [workflowDB, setWorkflowDB] = useState(null)
-  const [triggerActions, setTriggerActions] = useState(null)
+  const [triggerActions, setTriggerActions] = useState([])
   const [nodeActions, setNodeActions] = useState([])
   const [toolForms, setToolForms] = useState(null)
   const [userCredentials, setUserCredentials] = useState(null)
   const [credentialForms, setCredentialForms] = useState(null)
-  
-  const [workflow,setWorkflow]=useState({
-    name:slug,
-    requestedTrigger:null,
-    requestedNodes:[],
-    requestedTools:[],
-    requestedLLMS:[]
+
+  const [workflow, setWorkflow] = useState({
+    name: slug,
+    requestedTrigger: null,
+    requestedNodes: [],
+    requestedTools: [],
+    requestedLLMS: []
   })
 
-
-  const [nodes, setNodes] = useState(initialNodes);
-  const [edges, setEdges] = useState(initialEdges);
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
   const reactFlowWrapper = useRef(null);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
 
-  const [createdObjects,setCreatedObjects]=useState({
-    node:[],
-    aiNode:[],
-    tool:[],
-    llm:[]
+  const [createdObjects, setCreatedObjects] = useState({
+    node: [],
+    aiNode: [],
+    tool: [],
+    llm: [],
+    trigger: []
   })
 
   // const nodeTypes = useMemo(() => {
@@ -102,9 +100,16 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       }
     });
 
+
+    triggerActions.forEach(triggerAction => {
+      types[triggerAction.name] = function NodeComponent(props) {
+        return <ReactFlowTriggerNode data={triggerAction} />;
+      }
+    });
+
     console.log('Generated nodeTypes:', types);
     return types;
-  }, [nodeActions]); // Dependency on nodeActions
+  }, [nodeActions,triggerActions]); // Dependency on nodeActions
 
 
   const onNodesChange = (changes) => {
@@ -119,31 +124,52 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     }, 2000)
   }
 
+  function updateWorkflow(source,sourceRole,target,targetRole){
+    if(sourceRole=='trigger'){
+      if(targetRole=='node' || targetRole=='aiNode'){
+        //update the triggerIdentityNo for that node in the requestedNodes in workflow
+      } 
+    }
+  }
+
   const onConnect = (params) => {
     const { source, target } = params
     console.log('inside onConnect params : ', params)
 
-    const {node,aiNode,llm,tool}=createdObjects
-    if(node.includes(source)){
+    const { node, aiNode, llm, tool ,trigger} = createdObjects
+    let sourceRole,targetRole;
+
+    if (node.includes(source)) {
       console.log('source is a node');
-    }else if(aiNode.includes(source)){
+      sourceRole='node'
+    } else if (aiNode.includes(source)) {
       console.log('source is an aiNode');
-    }else if(llm.includes(source)){
-      console.log('source is an llm');
-    }else if(tool.includes(source)){
-      console.log('source is a tool');
+      sourceRole='node'
+    }  else if(trigger[0]==source){
+      console.log('Source is trigger');
+    } else {
+      console.log('invalid source identityType, not forming this edge');
+      return;
     }
 
 
-    if(node.includes(target)){
+    if (node.includes(target)) {
       console.log('target is a node');
-    }else if(aiNode.includes(target)){
+      targetRole='node'
+    } else if (aiNode.includes(target)) {
       console.log('target is an aiNode');
-    }else if(llm.includes(target)){
+      targetRole='aiNode'
+    } else if (llm.includes(target)) {
       console.log('target is an llm');
-    }else if(tool.includes(target)){
+      targetRole='llm'
+    } else if (tool.includes(target)) {
       console.log('target is a tool');
+      targetRole='tool'
+    } else {
+      console.log('invalid target indentityType, not forming this edge');
+      return;
     }
+    updateWorkflow(source,sourceRole,target,targetRole);
 
     const edge = {
       id: Math.random().toString(),
@@ -151,6 +177,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       target,
       type: 'default'
     }
+
     setEdges((eds) => [...eds, edge])
   }
 
@@ -166,10 +193,10 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   //   event.dataTransfer.effectAllowed = 'move'; // Allow moving
   // }, []);
 
-  const onDragStart = (data,instanceType:string) => (event: React.DragEvent) => {
+  const onDragStart = (data, instanceType: string) => (event: React.DragEvent) => {
     console.log('Dragging started! instance :', data.name, 'Type:', data.type);
-    console.log('instanceType ; ',instanceType);
-    
+    console.log('instanceType ; ', instanceType);
+
     console.log('data : ', data);
 
     const dragData = {
@@ -198,12 +225,12 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     const nodeData = JSON.parse(event.dataTransfer.getData('application/reactflow'));
 
-    const { type, data,instanceType } = nodeData;
+    const { type, data, instanceType } = nodeData;
     console.log('type : ', type);
     console.log('data : ', data);
 
-    console.log('instanceType : ',instanceType);
-    
+    console.log('instanceType : ', instanceType);
+
 
     console.log('Dropped! Creating node: ', type);
 
@@ -232,6 +259,9 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     });
 
     createdObjects[instanceType].push(newNode.id)
+    console.log('createdObjects : ',createdObjects);
+    
+    setCreatedObjects({...createdObjects})
   }
 
   const onInit = (instance) => {
@@ -312,7 +342,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   useEffect(() => {
     // fetchWorkflow()
-    // fetchAllTriggerActions()
+    fetchAllTriggerActions()
     fetchAllNodeActions()
     // fetchAllToolForms()
     // fetchAllUserCredentials()
@@ -320,12 +350,12 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   }, [])
 
-  useEffect(()=>{
-    console.log('new nodeTypes ; ',nodeTypes);
-  },[nodeTypes])
+  useEffect(() => {
+    console.log('new nodeTypes ; ', nodeTypes);
+  }, [nodeTypes])
 
-  function logNodeTypes(){
-    console.log('nodeTypes : ',nodeTypes);
+  function logNodeTypes() {
+    console.log('nodeTypes : ', nodeTypes);
   }
 
   return (
@@ -352,7 +382,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                     minWidth: '120px',
                   }}
                   key={nodeAction._id}
-                  onDragStart={onDragStart(nodeAction,'node')}
+                  onDragStart={onDragStart(nodeAction, 'node')}
                 >
                   <strong>{nodeAction.name}</strong>
                   <p style={{ fontSize: '12px', color: '#555' }}>Node action</p>
@@ -366,7 +396,34 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
         </div>
 
-
+        <div>
+          <p>Trigger actions</p>
+          {triggerActions?.map((triggerAction) => (
+            <div
+              key={triggerAction._id}
+              draggable
+              style={{
+                padding: '10px',
+                border: '2px solid #2196F3',
+                borderRadius: '5px',
+                background: '#E3F2FD',
+                textAlign: 'center',
+                minWidth: '120px',
+                cursor: 'grab',
+              }}
+              onDragStart={onDragStart(triggerAction, 'trigger')}
+            >
+ 
+              <strong>{triggerAction.name}</strong>
+              <p style={{ fontSize: '12px', color: '#555', margin: '4px 0' }}>
+                Trigger action
+              </p>
+              <div style={{ fontSize: '10px', marginTop: '8px' }}>
+                {JSON.stringify(triggerAction)}
+              </div>
+            </div>
+          ))}
+        </div>
         Reactflow canvas
         <div ref={reactFlowWrapper} style={{ width: '100%', height: '80vh' }}>
           <ReactFlow

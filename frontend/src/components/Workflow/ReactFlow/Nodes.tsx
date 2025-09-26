@@ -188,7 +188,6 @@ export function ReactFlowAINode({ data }: { data: any }) {
 }
 
 // export function ReactFlowAINode({ data }: { data: any }) {
-
 //   return (
 //     <>
 //       <div draggable
@@ -213,3 +212,58 @@ export function ReactFlowAINode({ data }: { data: any }) {
 //     </>
 //   )
 // }
+
+export function ReactFlowTriggerNode({ data }: { data: any }) {
+  return (
+    <div
+      style={{
+        padding: "16px",
+        border: "2px solid #FF6B35",
+        borderRadius: "8px",
+        background: "#FFF3E0",
+        textAlign: "center",
+        width: "200px",
+        position: "relative",
+        minHeight: "80px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+
+
+      {/* Node content */}
+      <div style={{ pointerEvents: "none" }}>
+        <strong style={{ 
+          fontSize: "14px", 
+          display: "block", 
+          marginBottom: "4px",
+          color: "#D84315"
+        }}>
+          {data.name}
+        </strong>
+        <p style={{ 
+          fontSize: "12px", 
+          color: "#BF360C", 
+          margin: 0,
+          opacity: 0.8 
+        }}>
+          AI Agent
+        </p>
+      </div>
+
+      {/* Source handle on the right */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{
+          background: "#FF6B35",
+          width: "12px",
+          height: "12px",
+          border: "2px solid #fff",
+        }}
+      />
+    </div>
+  );
+}
