@@ -96,8 +96,14 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     const types: NodeTypes = {};
     nodeActions.forEach(nodeAction => {
-      types[nodeAction.name] = function NodeComponent(props) {
-        return <ReactFlowNode data={nodeAction} />;
+      if (nodeAction.type == 'node') {
+        types[nodeAction.name] = function NodeComponent(props) {
+          return <ReactFlowNode data={nodeAction} />;
+        }
+      } else if (nodeAction.type == 'aiNode') {
+        types[nodeAction.name] = function NodeComponent(props) {
+          return <ReactFlowAINode data={nodeAction} />;
+        }
       }
     });
 
@@ -127,45 +133,83 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   function updateWorkflow(source: string, sourceRole: string, target: string, targetRole: string) {
     console.log('inside updateWorkflow, sourceRole : ', sourceRole, ' targetRole : ', targetRole);
-    if (sourceRole == 'trigger') {
-      if (targetRole == 'node') {
-        //update the triggerIdentityNo for that node in the requestedNodes in workflow
-        let nodeObj = nodes.filter((node) => node.identityNo == target)
-        let triggerObj = nodes.filter((node) => node.identityNo == source)
+    try {
+      if (sourceRole == 'trigger') {
 
-        if (nodeObj && nodeObj.length != 0) {
-          nodeObj = nodeObj[0]
-        } else {
-          console.log('nodeObj not found from nodes, returning');
-          return false;
+        //working of source -> node might be same as souce -> aiNode
+        if (targetRole == 'node' || targetRole == 'aiNode') {
+          //update the triggerIdentityNo for that node in the requestedNodes in workflow
+          let nodeObj = workflow.requestedNodes.filter((node) => node.identityNo == target)
+          let triggerObj = (workflow.requestedTrigger?.identityNo == source) ? workflow.requestedTrigger : null;
+
+          if (nodeObj && nodeObj.length != 0) {
+            nodeObj = nodeObj[0]
+          } else {
+            console.log('nodeObj not found from nodes, returning');
+            return false;
+          }
+
+          console.log('nodeObj : ', nodeObj);
+          console.log('triggerObj : ', triggerObj);
+
+
+          let existingNodeInWorkflow = workflow.requestedNodes.filter((node) => node.identityNo == nodeObj.identityNo)
+          if (!existingNodeInWorkflow || existingNodeInWorkflow.length == 0) {
+            console.log('nodeObj(target) does not exists in the workflow obj');
+            return false;
+          }
+
+          existingNodeInWorkflow = existingNodeInWorkflow[0]
+          if (existingNodeInWorkflow.prerequisiteNodesIdentityNos.includes(triggerObj.identityNo)) {
+            return false;
+          }
+
+          console.log('existingNodeInWorkflow : ', existingNodeInWorkflow);
+          existingNodeInWorkflow.prerequisiteNodesIdentityNos.push(triggerObj.identityNo)
+          return true;
+
+
+        } else return false;
+      } else if (sourceRole == 'node') {
+        if (targetRole == 'node' || targetRole == 'aiNode') {
+          let sourceNodeObj = workflow.requestedNodes.find((node) => node.identityNo == source)
+          let targetNodeObj = workflow.requestedNodes.find((node) => node.identityNo == target)
+
+          if (!sourceNodeObj) {
+            console.log('Requested source node not found in the workflow obj');
+            return false;
+          }
+
+          if (!targetNodeObj) {
+            console.log('Requested target node not found in the workflow obj');
+            return false;
+          }
+
+          if (targetNodeObj.prerequisiteNodesIdentityNos.includes(sourceNodeObj.identityNo)) {
+            return false;
+          }
+
+          targetNodeObj.prerequisiteNodesIdentityNos.push(sourceNodeObj.identityNo)
+          return true
         }
+      } else if (sourceRole == 'aiNode') {
+        if (targetRole == 'node' || targetRole == 'aiNode') {
 
-        if (triggerObj && triggerObj.length != 0) {
-          triggerObj = triggerObj[0]
-        } else {
-          console.log('triggerObj not found from nodes, returning');
-          return false;
+        } else if (targetRole == 'tool') {
+
+        } else if (targetRole == 'llm') {
+
         }
-
-        console.log('nodeObj : ', nodeObj);
-        console.log('triggerObj : ', triggerObj);
-
-
-        const existingNodeInWorkflow = workflow.requestedNodes.filter((node) => node.identityNo == nodeObj.identityNo)
-        if (!existingNodeInWorkflow) {
-          console.log('nodeObj(target) does not exists in the workflow obj');
-          return false;
-        }
-
-        existingNodeInWorkflow.prerequisiteNodesIdentityNos.push(triggerObj.identityNo)
-
-
       }
+
+    } catch (error) {
+      console.log('ERROR : updateWorkflow : ', error);
+      return false;
     }
   }
 
   const onConnect = (params) => {
-    const { source, target, sourceHandle, targetHandle } = params
+    let { source, target, sourceHandle, targetHandle } = params
     console.log('inside onConnect params : ', params)
 
     const { node, aiNode, llm, tool, trigger } = createdObjects
@@ -176,7 +220,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       sourceRole = 'node'
     } else if (aiNode.includes(source)) {
       console.log('source is an aiNode');
-      sourceRole = 'node'
+      sourceRole = 'aiNode'
     } else if (trigger[0] == source) {
       console.log('Source is trigger');
       sourceRole = 'trigger'
@@ -190,7 +234,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       console.log('target is a node');
       targetRole = 'node'
     } else if (aiNode.includes(target)) {
-      console.log('target is an aiNode');
+      console.log('target is an aiNode!');
       targetRole = 'aiNode'
     } else if (llm.includes(target)) {
       console.log('target is an llm');
@@ -215,13 +259,17 @@ export default function Workflow({ username, slug }: { username: string, slug: s
         return;
       }
     } else if (sourceRole == 'aiNode') {
+      console.log('hii');
+      
       if (sourceHandle == 'right') {
         if (!(targetRole == 'node' || targetRole == 'aiNode')) {
           console.log('Invalid edge,aiNode cannot forward request to  : ', targetRole);
           return;
         }
       } else if (sourceHandle == 'top') {
-        if (!targetRole == 'llm') {
+        console.log('hey');
+        
+        if (targetRole != 'llm') {
           console.log('Invalid edge,aiNode cannot use  : ', targetRole, ' as LLM');
           return;
         }
@@ -233,12 +281,17 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       }
     }
 
-    updateWorkflow(source, sourceRole, target, targetRole);
+
+    if (!updateWorkflow(source, sourceRole, target, targetRole)) {
+      return;
+    }
 
     const edge = {
       id: Math.random().toString(),
       source,
       target,
+      sourceHandle,
+      targetHandle,
       type: 'default'
     }
 
@@ -318,7 +371,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       },
     };
 
-    if (instanceType == 'node') {
+    if (instanceType == 'node' || instanceType == 'aiNode') {
       const newNodeWorkflow = {
         identityNo: id,
         nodeActionId: data._id,
@@ -330,7 +383,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
       if (trigger) {
         console.log('Only single trigger can exist in a workflow');
-
+        return;
         const triggerId = trigger.id;
         const newNodes = nodes.filter((node) => node.id != triggerId)
         const newEdges = edges.filter((edge) => edge.source != triggerId)
@@ -459,6 +512,9 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       <ReactFlowProvider>
         <button onClick={logNodeTypes}>log nodeTypes </button>
         <div>
+          <p>workflow obj</p>
+          {JSON.stringify(workflow)}
+
           <p>nodeTypes</p>
           {JSON.stringify(nodeTypes)}
 
@@ -467,26 +523,54 @@ export default function Workflow({ username, slug }: { username: string, slug: s
             <p>Node actions</p>
             {nodeActions && nodeActions.map((nodeAction: any) => {
 
-              return (
-                <div draggable
-                  style={{
-                    padding: '10px',
-                    border: '2px solid #2196F3',
-                    borderRadius: '5px',
-                    background: '#E3F2FD',
-                    textAlign: 'center',
-                    minWidth: '120px',
-                  }}
-                  key={nodeAction._id}
-                  onDragStart={onDragStart(nodeAction, 'node')}
-                >
-                  <strong>{nodeAction.name}</strong>
-                  <p style={{ fontSize: '12px', color: '#555' }}>Node action</p>
-                  <div>
-                    {JSON.stringify(nodeAction)}
+              if (nodeAction.type == 'aiNode') {
+                return (
+                  <div draggable
+                    style={{
+                      padding: '10px',
+                      border: '2px solid #2196F3',
+                      borderRadius: '5px',
+                      background: '#E3F2FD',
+                      textAlign: 'center',
+                      minWidth: '120px',
+                    }}
+                    key={nodeAction._id}
+                    onDragStart={onDragStart(nodeAction, 'aiNode')}
+                  >
+                    <strong>{nodeAction.name}</strong>
+                    <p style={{ fontSize: '12px', color: '#555' }}>Node action</p>
+                    <div>
+                      {JSON.stringify(nodeAction)}
+                    </div>
                   </div>
-                </div>
-              )
+                )
+              } else if(nodeAction.type=='node'){
+                return (
+                  <div draggable
+                    style={{
+                      padding: '10px',
+                      border: '2px solid #2196F3',
+                      borderRadius: '5px',
+                      background: '#E3F2FD',
+                      textAlign: 'center',
+                      minWidth: '120px',
+                    }}
+                    key={nodeAction._id}
+                    onDragStart={onDragStart(nodeAction, 'node')}
+                  >
+                    <strong>{nodeAction.name}</strong>
+                    <p style={{ fontSize: '12px', color: '#555' }}>Node action</p>
+                    <div>
+                      {JSON.stringify(nodeAction)}
+                    </div>
+                  </div>
+                )
+              } else {
+                return (<>
+                <p>Invalid node action type</p>
+                </>)
+              }
+ 
             })}
           </div>
 

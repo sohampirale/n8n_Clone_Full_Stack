@@ -31,9 +31,15 @@ export async function createNodeActions() {
     publicallyAvailaible:true
   }, {
     name: `gmail_send_email`,
-    queueName: `trigger:gmail_send_email`,
+    queueName: `action:gmail_send_email`,
     icon: `https://imgs.search.brave.com/VUh26_a7IUB9j8lXGp_piCo7z7VfCKivXVARaFeIDyA/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9tYXJr/ZXRwbGFjZS5jYW52/YS5jb20vbEZtZWsv/TUFHWEY3bEZtZWsv/MS90bC9jYW52YS1n/cmFkaWVudC1uZW9u/LWVtYWlsLWljb24t/cmVwcmVzZW50aW5n/LW1lc3NhZ2VzLWFu/ZC1kaWdpdGFsLWNv/bW11bmljYXRpb24t/c3VpdGFibGUtZm9y/LXNvY2lhbC1tZWRp/YS1ncmFwaGljcywt/bWFya2V0aW5nLWNh/bXBhaWducywtYW5k/LWlubm92YXRpdmUt/dWktdXgtcHJvamVj/dHMtTUFHWEY3bEZt/ZWsucG5n`,
     publicallyAvailaible:true
+  }, {
+    name: `aiNode`,
+    queueName: `action:aiNode`,
+    icon: `https://imgs.search.brave.com/KkurEJTTp02R4mtOWY22R3FdvJGgAWI0V-jMGASzcM8/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9jZG4u/aWNvbnNjb3V0LmNv/bS9pY29uL3ByZW1p/dW0vcG5nLTI1Ni10/aHVtYi9haS1yb2Jv/dC0zLTEwODkzODAu/cG5nP2Y9d2VicCZ3/PTEyOA`,
+    publicallyAvailaible:true,
+    type:'aiNode'
   }]
 
   try {

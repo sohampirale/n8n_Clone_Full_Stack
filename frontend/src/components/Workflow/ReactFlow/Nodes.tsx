@@ -132,6 +132,7 @@ export function ReactFlowAINode({ data }: { data: any }) {
       <Handle
         type="source"
         position={Position.Top}
+        id="top"
         style={{
           background: "#FF6B35",
           width: "12px",
@@ -144,6 +145,7 @@ export function ReactFlowAINode({ data }: { data: any }) {
       <Handle
         type="source"
         position={Position.Bottom}
+        id="bottom"
         style={{
           background: "#FF6B35",
           width: "12px",
@@ -176,6 +178,7 @@ export function ReactFlowAINode({ data }: { data: any }) {
       <Handle
         type="source"
         position={Position.Right}
+        id="right"
         style={{
           background: "#FF6B35",
           width: "12px",
