@@ -12,32 +12,32 @@ import actionRouter from "./routes/action.route.js"
 import toolsRouter from "./routes/tool.route.js"
 import cors from "cors"
 
-const app =express()
+const app = express()
 app.use(express.json())
 app.use(cookieParser())
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL, 
-  credentials: true, 
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
 }));
 
-app.get("/",(req,res)=>{
+app.get("/", (req, res) => {
   res.send("Hello World")
 })
 
-app.use("/api/v1/user",userRouter)
-app.use("/api/v1/credential",credentialsRouter)
-app.use("/api/v1/workflow",workflowRouter)
-app.use("/api/v1/trigger",triggerRouter)
-app.use("/api/v1/action",actionRouter)
-app.use("/api/v1/tool",toolsRouter)
+app.use("/api/v1/user", userRouter)
+app.use("/api/v1/credential", credentialsRouter)
+app.use("/api/v1/workflow", workflowRouter)
+app.use("/api/v1/trigger", triggerRouter)
+app.use("/api/v1/action", actionRouter)
+app.use("/api/v1/tool", toolsRouter)
 
 startServer(app)
 
-setTimeout(()=>{
+setTimeout(() => {
   //used seed functions here as needed 
   // createNodeActions()
   // createTriggerActions()
   // createCredentialForms()
-  // createToolForm()
-},5000)
+  //  createToolForm()
+}, 5000)

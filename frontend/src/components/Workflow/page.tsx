@@ -3,7 +3,7 @@ import '@xyflow/react/dist/style.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Background, Controls, Position, Handle, ReactFlowProvider, NodeTypes } from '@xyflow/react';
 import { axiosInstance } from "@/helpers/axios";
-import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode } from './ReactFlow/Nodes';
+import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool } from './ReactFlow/Nodes';
 
 // const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }];
 // const initialNodes = [
@@ -36,9 +36,9 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   const [workflowDB, setWorkflowDB] = useState(null)
   const [triggerActions, setTriggerActions] = useState([])
   const [nodeActions, setNodeActions] = useState([])
-  const [toolForms, setToolForms] = useState(null)
+  const [toolForms, setToolForms] = useState([])
   const [userCredentials, setUserCredentials] = useState(null)
-  const [credentialForms, setCredentialForms] = useState(null)
+  const [credentialForms, setCredentialForms] = useState([])
 
   const [workflow, setWorkflow] = useState({
     name: slug,
@@ -53,6 +53,12 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   const [edges, setEdges] = useState([]);
   const reactFlowWrapper = useRef(null);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
+
+  const [workflowInfoExpanded, setWorkflowInfoExpanded] = useState(false);
+  const [nodeActionsExpanded, setNodeActionsExpanded] = useState(false);
+  const [triggerActionsExpanded, setTriggerActionsExpanded] = useState(false);
+  const [llmsExpanded, setLlmsExpanded] = useState(false);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
 
   const [createdObjects, setCreatedObjects] = useState({
     node: [],
@@ -114,9 +120,23 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       }
     });
 
+    credentialForms.forEach(credentialForm => {
+      if (credentialForm.type == 'llm') {
+        types[credentialForm.name] = function NodeComponent(props) {
+          return <ReactFlowLLM data={credentialForm} />;
+        }
+      }
+    });
+
+    toolForms.forEach(toolForm => {
+      types[toolForm.name] = function NodeComponent(props) {
+        return <ReactFlowTool data={toolForm} />;
+      }
+    });
+
     console.log('Generated nodeTypes:', types);
     return types;
-  }, [nodeActions, triggerActions]); // Dependency on nodeActions and triggerActions
+  }, [nodeActions, triggerActions, credentialForms, toolForms]); // Dependency on nodeActions and triggerActions
 
 
   const onNodesChange = (changes) => {
@@ -131,7 +151,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     }, 2000)
   }
 
-  function updateWorkflow(source: string, sourceRole: string, target: string, targetRole: string) {
+  function updateWorkflow(source: string, sourceRole: string, target: string, targetRole: string, sourceHandle: string, targetHandle: string) {
     console.log('inside updateWorkflow, sourceRole : ', sourceRole, ' targetRole : ', targetRole);
     try {
       if (sourceRole == 'trigger') {
@@ -194,11 +214,72 @@ export default function Workflow({ username, slug }: { username: string, slug: s
         }
       } else if (sourceRole == 'aiNode') {
         if (targetRole == 'node' || targetRole == 'aiNode') {
+          //by default i am talkign about right side connection of aiNode
+          const sourceAINodeWorkflow = workflow.requestedNodes?.find((node) => node.identityNo == source)
+          const targetNodeWorkflow = workflow.requestedNodes?.find((node) => node.identityNo == target)
 
+          if (!sourceAINodeWorkflow) {
+            console.log('sourceAINodeWorkflow not found in the workflow object');
+            return false;
+          }
+          if (!targetNodeWorkflow) {
+            console.log('targetNodeWorkflow not found in the workflow object');
+            return false;
+          }
+
+          if (targetNodeWorkflow.prerequisiteNodesIdentityNos.includes(source)) {
+            console.log('Connection between these 2 nodes already exists');
+            return false;
+          }
+
+          targetNodeWorkflow.prerequisiteNodesIdentityNos.push(source)
+          return true;
         } else if (targetRole == 'tool') {
+          const sourceAINodeWorkflow = workflow.requestedNodes?.find((node) => node.identityNo == source)
+          const toolObjWorkflow = workflow.requestedTools?.find((tool) => tool.identityNo == target)
 
+          if (!sourceAINodeWorkflow) {
+            console.log('sourceAINodeWorkflow not found in the workflow object');
+            return false;
+          }
+          if (!toolObjWorkflow) {
+            console.log('tool not found in the workflow object');
+            return false;
+          }
+
+          if (toolObjWorkflow.aiNodeIdentityNo == source) {
+            console.log('Connection between aiNode and this tool already exists');
+            return false;
+          }
+
+          toolObjWorkflow.aiNodeIdentityNo = source
+          return true;
         } else if (targetRole == 'llm') {
+          const sourceAINodeWorkflow = workflow.requestedNodes?.find((node) => node.identityNo == source)
+          const llmObjWorkflow = workflow.requestedLLMS?.find((llm) => llm.identityNo == target)
 
+          if (!sourceAINodeWorkflow) {
+            console.log('sourceAINodeWorkflow not found in the workflow object');
+            return false;
+          }
+
+          if (!llmObjWorkflow) {
+            console.log('llm not found in the workflow object');
+            return false;
+          }
+
+          const existingLLM = workflow.requestedLLMS.find((llm) => llm.aiNodeIdentityNo == source);
+          if (existingLLM) {
+            console.log('One llm connection already exists with the aiNode, delete existing llm with that aiNode to connect another');
+            return false;
+          }
+          if (llmObjWorkflow.aiNodeIdentityNo == source) {
+            console.log('Connection between aiNode and this tool already exists');
+            return false;
+          }
+
+          llmObjWorkflow.aiNodeIdentityNo = source
+          return true;
         }
       }
 
@@ -215,6 +296,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     const { node, aiNode, llm, tool, trigger } = createdObjects
     let sourceRole, targetRole;
 
+    //assigning sourceRole
     if (node.includes(source)) {
       console.log('source is a node');
       sourceRole = 'node'
@@ -229,7 +311,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       return;
     }
 
-
+    //assinging targetRole
     if (node.includes(target)) {
       console.log('target is a node');
       targetRole = 'node'
@@ -260,7 +342,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       }
     } else if (sourceRole == 'aiNode') {
       console.log('hii');
-      
+
       if (sourceHandle == 'right') {
         if (!(targetRole == 'node' || targetRole == 'aiNode')) {
           console.log('Invalid edge,aiNode cannot forward request to  : ', targetRole);
@@ -268,13 +350,13 @@ export default function Workflow({ username, slug }: { username: string, slug: s
         }
       } else if (sourceHandle == 'top') {
         console.log('hey');
-        
+
         if (targetRole != 'llm') {
           console.log('Invalid edge,aiNode cannot use  : ', targetRole, ' as LLM');
           return;
         }
       } else if (sourceHandle == 'bottom') {
-        if (!targetRole == 'tool') {
+        if (targetRole != 'tool') {
           console.log('Invalid edge,aiNode cannot use  : ', targetRole, ' as tool');
           return;
         }
@@ -282,7 +364,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     }
 
 
-    if (!updateWorkflow(source, sourceRole, target, targetRole)) {
+    if (!updateWorkflow(source, sourceRole, target, targetRole, sourceHandle, targetHandle)) {
       return;
     }
 
@@ -398,6 +480,29 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       }
       workflow.requestedTrigger = newTriggerWorkflow
       setTrigger(newNode)
+    } else if (instanceType == 'tool') {
+      const newToolWorkflow = {
+        identityNo: id,
+        toolFormId: data._id,
+        toolForm: data,
+        additionalDescription: "Add this later in frontend for users",
+        data: {
+          //add this also in future if needed
+        }
+      }
+
+      workflow.requestedTools.push(newToolWorkflow)
+    } else if (instanceType == 'llm') {
+      const newLLMWorkflow = {
+        identityNo: id,
+        credentialFormId: data._id,
+        credentialForm: data,
+        data: {
+          //add this also in future if needed
+        }
+      }
+
+      workflow.requestedLLMS.push(newLLMWorkflow)
     }
 
     console.log('newNode thats pushed onto nodes : ', newNode);
@@ -493,9 +598,9 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     // fetchWorkflow()
     fetchAllTriggerActions()
     fetchAllNodeActions()
-    // fetchAllToolForms()
+    fetchAllToolForms()
     // fetchAllUserCredentials()
-    // fetchAllCredentialForms()
+    fetchAllCredentialForms()
 
   }, [])
 
@@ -511,7 +616,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     <>
       <ReactFlowProvider>
         <button onClick={logNodeTypes}>log nodeTypes </button>
-        <div>
+        {/* <div>
           <p>workflow obj</p>
           {JSON.stringify(workflow)}
 
@@ -544,7 +649,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                     </div>
                   </div>
                 )
-              } else if(nodeAction.type=='node'){
+              } else if (nodeAction.type == 'node') {
                 return (
                   <div draggable
                     style={{
@@ -567,10 +672,10 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                 )
               } else {
                 return (<>
-                <p>Invalid node action type</p>
+                  <p>Invalid node action type</p>
                 </>)
               }
- 
+
             })}
           </div>
 
@@ -604,6 +709,621 @@ export default function Workflow({ username, slug }: { username: string, slug: s
             </div>
           ))}
         </div>
+
+        <div>
+          <p>LLM's for AI Node</p>
+          {credentialForms && credentialForms?.map((credentialForm) => {
+            if (credentialForm.type == 'llm') {
+              return (
+                <div
+                  key={credentialForm._id}
+                  draggable
+                  style={{
+                    padding: '10px',
+                    border: '2px solid #2196F3',
+                    borderRadius: '5px',
+                    background: '#E3F2FD',
+                    textAlign: 'center',
+                    minWidth: '120px',
+                    cursor: 'grab',
+                  }}
+                  onDragStart={onDragStart(credentialForm, 'llm')}
+                >
+
+                  <strong>{credentialForm.name}</strong>
+                  <p style={{ fontSize: '12px', color: '#555', margin: '4px 0' }}>
+                    LLM
+                  </p>
+                  <div style={{ fontSize: '10px', marginTop: '8px' }}>
+                    {JSON.stringify(credentialForm)}
+                  </div>
+                </div>
+              )
+            }
+          })}
+        </div>
+
+        <div>
+          <p>Availaible Tools for AI Node</p>
+          {toolForms && toolForms?.map((toolForm) => {
+              return (
+                <div
+                  key={toolForm._id}
+                  draggable
+                  style={{
+                    padding: '10px',
+                    border: '2px solid #2196F3',
+                    borderRadius: '5px',
+                    background: '#E3F2FD',
+                    textAlign: 'center',
+                    minWidth: '120px',
+                    cursor: 'grab',
+                  }}
+                  onDragStart={onDragStart(toolForm, 'tool')}
+                >
+
+                  <strong>{toolForm.name}</strong>
+                  <p style={{ fontSize: '12px', color: '#555', margin: '4px 0' }}>
+                    Tool
+                  </p>
+                  <div style={{ fontSize: '10px', marginTop: '8px' }}>
+                    {JSON.stringify(toolForm)}
+                  </div>
+                </div>
+              )
+          })}
+        </div> */}
+
+        {/* Workflow Info Section */}
+        <div style={{
+          background: '#f8f9fa',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          marginBottom: '8px',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setWorkflowInfoExpanded(!workflowInfoExpanded)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #6c757d 0%, #5a6268 100%)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #5a6268 0%, #495057 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #6c757d 0%, #5a6268 100%)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '8px' }}>📊</span>
+              Workflow Info
+            </div>
+            <span style={{
+              transform: workflowInfoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>▼</span>
+          </button>
+
+          {workflowInfoExpanded && (
+            <div style={{ padding: '16px', background: '#ffffff' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#495057', fontSize: '14px' }}>Workflow Object</h4>
+              <div style={{
+                background: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                borderRadius: '4px',
+                padding: '12px',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                color: '#6c757d',
+                maxHeight: '150px',
+                overflowY: 'auto'
+              }}>
+                {JSON.stringify(workflow, null, 2)}
+              </div>
+
+              <h4 style={{ margin: '16px 0 8px 0', color: '#495057', fontSize: '14px' }}>Node Types</h4>
+              <div style={{
+                background: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                borderRadius: '4px',
+                padding: '12px',
+                fontSize: '11px',
+                fontFamily: 'monospace',
+                color: '#6c757d',
+                maxHeight: '100px',
+                overflowY: 'auto'
+              }}>
+                {JSON.stringify(nodeTypes, null, 2)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Node Actions Section */}
+        <div style={{
+          background: '#fff',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          marginBottom: '8px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setNodeActionsExpanded(!nodeActionsExpanded)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #2196F3 0%, #1976d2 100%)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #2196F3 0%, #1976d2 100%)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '8px' }}>⚙️</span>
+              Node Actions ({nodeActions?.length || 0})
+            </div>
+            <span style={{
+              transform: nodeActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>▼</span>
+          </button>
+
+          {nodeActionsExpanded && (
+            <div style={{ padding: '16px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '12px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))'
+              }}>
+                {nodeActions && nodeActions.map((nodeAction: any) => {
+                  if (nodeAction.type == 'aiNode') {
+                    return (
+                      <div draggable
+                        style={{
+                          padding: '16px',
+                          border: '2px solid #2196F3',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #E3F2FD 0%, #f5f9ff 100%)',
+                          textAlign: 'center',
+                          minWidth: '180px',
+                          cursor: 'grab',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 8px rgba(33, 150, 243, 0.1)'
+                        }}
+                        key={nodeAction._id}
+                        onDragStart={onDragStart(nodeAction, 'aiNode')}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(33, 150, 243, 0.1)';
+                        }}
+                      >
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>🤖</div>
+                        <strong style={{ color: '#1565c0', fontSize: '14px' }}>{nodeAction.name}</strong>
+                        <p style={{ fontSize: '12px', color: '#757575', margin: '4px 0 8px 0' }}>AI Node Action</p>
+                        <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                          <summary style={{ cursor: 'pointer', fontSize: '11px', color: '#666' }}>Details</summary>
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#666',
+                            background: '#fff',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            marginTop: '4px',
+                            fontFamily: 'monospace',
+                            maxHeight: '100px',
+                            overflowY: 'auto'
+                          }}>
+                            {JSON.stringify(nodeAction, null, 2)}
+                          </div>
+                        </details>
+                      </div>
+                    )
+                  } else if (nodeAction.type == 'node') {
+                    return (
+                      <div draggable
+                        style={{
+                          padding: '16px',
+                          border: '2px solid #4caf50',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%)',
+                          textAlign: 'center',
+                          minWidth: '180px',
+                          cursor: 'grab',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 8px rgba(76, 175, 80, 0.1)'
+                        }}
+                        key={nodeAction._id}
+                        onDragStart={onDragStart(nodeAction, 'node')}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.1)';
+                        }}
+                      >
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚡</div>
+                        <strong style={{ color: '#2e7d32', fontSize: '14px' }}>{nodeAction.name}</strong>
+                        <p style={{ fontSize: '12px', color: '#757575', margin: '4px 0 8px 0' }}>Node Action</p>
+                        <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                          <summary style={{ cursor: 'pointer', fontSize: '11px', color: '#666' }}>Details</summary>
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#666',
+                            background: '#fff',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            marginTop: '4px',
+                            fontFamily: 'monospace',
+                            maxHeight: '100px',
+                            overflowY: 'auto'
+                          }}>
+                            {JSON.stringify(nodeAction, null, 2)}
+                          </div>
+                        </details>
+                      </div>
+                    )
+                  } else {
+                    return (
+                      <div key={nodeAction._id} style={{
+                        padding: '16px',
+                        border: '2px solid #f44336',
+                        borderRadius: '8px',
+                        background: '#ffebee',
+                        textAlign: 'center',
+                        color: '#c62828'
+                      }}>
+                        <p style={{ margin: 0 }}>⚠️ Invalid node action type</p>
+                      </div>
+                    )
+                  }
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Trigger Actions Section */}
+        <div style={{
+          background: '#fff',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          marginBottom: '8px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setTriggerActionsExpanded(!triggerActionsExpanded)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #f57c00 0%, #e65100 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '8px' }}>🎯</span>
+              Trigger Actions ({triggerActions?.length || 0})
+            </div>
+            <span style={{
+              transform: triggerActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>▼</span>
+          </button>
+
+          {triggerActionsExpanded && (
+            <div style={{ padding: '16px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '12px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))'
+              }}>
+                {triggerActions?.map((triggerAction) => (
+                  <div
+                    key={triggerAction._id}
+                    draggable
+                    style={{
+                      padding: '16px',
+                      border: '2px solid #ff9800',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, #fff3e0 0%, #fef7ed 100%)',
+                      textAlign: 'center',
+                      minWidth: '180px',
+                      cursor: 'grab',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(255, 152, 0, 0.1)'
+                    }}
+                    onDragStart={onDragStart(triggerAction, 'trigger')}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 152, 0, 0.2)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(255, 152, 0, 0.1)';
+                    }}
+                  >
+                    <div style={{ fontSize: '24px', marginBottom: '8px' }}>🎯</div>
+                    <strong style={{ color: '#e65100', fontSize: '14px' }}>{triggerAction.name}</strong>
+                    <p style={{ fontSize: '12px', color: '#757575', margin: '4px 0 8px 0' }}>
+                      Trigger Action
+                    </p>
+                    <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                      <summary style={{ cursor: 'pointer', fontSize: '11px', color: '#666' }}>Details</summary>
+                      <div style={{
+                        fontSize: '10px',
+                        color: '#666',
+                        background: '#fff',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        marginTop: '4px',
+                        fontFamily: 'monospace',
+                        maxHeight: '100px',
+                        overflowY: 'auto'
+                      }}>
+                        {JSON.stringify(triggerAction, null, 2)}
+                      </div>
+                    </details>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* LLMs Section */}
+        <div style={{
+          background: '#fff',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          marginBottom: '8px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setLlmsExpanded(!llmsExpanded)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #7b1fa2 0%, #6a1b9a 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '8px' }}>🧠</span>
+              LLMs for AI Node ({credentialForms?.filter(c => c.type === 'llm').length || 0})
+            </div>
+            <span style={{
+              transform: llmsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>▼</span>
+          </button>
+
+          {llmsExpanded && (
+            <div style={{ padding: '16px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '12px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))'
+              }}>
+                {credentialForms && credentialForms?.map((credentialForm) => {
+                  if (credentialForm.type == 'llm') {
+                    return (
+                      <div
+                        key={credentialForm._id}
+                        draggable
+                        style={{
+                          padding: '16px',
+                          border: '2px solid #9c27b0',
+                          borderRadius: '8px',
+                          background: 'linear-gradient(135deg, #f3e5f5 0%, #faf5ff 100%)',
+                          textAlign: 'center',
+                          minWidth: '180px',
+                          cursor: 'grab',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 8px rgba(156, 39, 176, 0.1)'
+                        }}
+                        onDragStart={onDragStart(credentialForm, 'llm')}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(156, 39, 176, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 8px rgba(156, 39, 176, 0.1)';
+                        }}
+                      >
+                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>🧠</div>
+                        <strong style={{ color: '#6a1b9a', fontSize: '14px' }}>{credentialForm.name}</strong>
+                        <p style={{ fontSize: '12px', color: '#757575', margin: '4px 0 8px 0' }}>
+                          LLM
+                        </p>
+                        <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                          <summary style={{ cursor: 'pointer', fontSize: '11px', color: '#666' }}>Details</summary>
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#666',
+                            background: '#fff',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            marginTop: '4px',
+                            fontFamily: 'monospace',
+                            maxHeight: '100px',
+                            overflowY: 'auto'
+                          }}>
+                            {JSON.stringify(credentialForm, null, 2)}
+                          </div>
+                        </details>
+                      </div>
+                    )
+                  }
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tools Section */}
+        <div style={{
+          background: '#fff',
+          border: '1px solid #dee2e6',
+          borderRadius: '8px',
+          marginBottom: '8px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          overflow: 'hidden'
+        }}>
+          <button
+            onClick={() => setToolsExpanded(!toolsExpanded)}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              background: 'linear-gradient(135deg, #009688 0%, #00695c 100%)',
+              color: 'white',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #00695c 0%, #00796b 100%)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, #009688 0%, #00695c 100%)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '8px' }}>🛠️</span>
+              Available Tools ({toolForms?.length || 0})
+            </div>
+            <span style={{
+              transform: toolsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>▼</span>
+          </button>
+
+          {toolsExpanded && (
+            <div style={{ padding: '16px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '12px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))'
+              }}>
+                {toolForms && toolForms?.map((toolForm) => {
+                  return (
+                    <div
+                      key={toolForm._id}
+                      draggable
+                      style={{
+                        padding: '16px',
+                        border: '2px solid #009688',
+                        borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #e0f2f1 0%, #f0fdf4 100%)',
+                        textAlign: 'center',
+                        minWidth: '180px',
+                        cursor: 'grab',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 8px rgba(0, 150, 136, 0.1)'
+                      }}
+                      onDragStart={onDragStart(toolForm, 'tool')}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 150, 136, 0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 150, 136, 0.1)';
+                      }}
+                    >
+                      <div style={{ fontSize: '24px', marginBottom: '8px' }}>🛠️</div>
+                      <strong style={{ color: '#00796b', fontSize: '14px' }}>{toolForm.name}</strong>
+                      <p style={{ fontSize: '12px', color: '#757575', margin: '4px 0 8px 0' }}>
+                        Tool
+                      </p>
+                      <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                        <summary style={{ cursor: 'pointer', fontSize: '11px', color: '#666' }}>Details</summary>
+                        <div style={{
+                          fontSize: '10px',
+                          color: '#666',
+                          background: '#fff',
+                          padding: '8px',
+                          borderRadius: '4px',
+                          marginTop: '4px',
+                          fontFamily: 'monospace',
+                          maxHeight: '100px',
+                          overflowY: 'auto'
+                        }}>
+                          {JSON.stringify(toolForm, null, 2)}
+                        </div>
+                      </details>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         Reactflow canvas
         <div ref={reactFlowWrapper} style={{ width: '100%', height: '80vh' }}>
           <ReactFlow

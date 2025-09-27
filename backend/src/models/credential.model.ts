@@ -34,7 +34,7 @@ const credentialFormSchema = new Schema({
   },
   type:{
     type:String, //for credential forms like LLM of Gemini Cohere OpenAI etc 
-    default:null
+    default:""
   }
 }, {
   timestamps: true

@@ -55,11 +55,21 @@ export async function createCredentialForms() {
   const credentialFormsData = [{
     name: `cohere`,
     requiredFields:["API_KEY"],
-    publicallyAvailaible:true
+    publicallyAvailaible:true,
+    type:'llm'
   }, {
     name: `gemini`,
     requiredFields:["API_KEY"],
-    publicallyAvailaible:true
+    publicallyAvailaible:true,
+    type:'llm'
+  }, {
+    name: `gmail`,
+    requiredFields:["RESEND_API_KEY"],
+    publicallyAvailaible:true,
+  }, {
+    name: `telegram`,
+    requiredFields:["API_KEY"],
+    publicallyAvailaible:true,
   }]
 
   try {
@@ -78,8 +88,28 @@ export async function createToolForm() {
     schema:z.object({
       query:z.string().describe("query used by serpAPI to do web search and return result/json")
     }),
-    func:async function(cityName:string){
+    func:async function(query:string){
       return "Some info from the serpAPI";
+    },
+    publicallyAvailaible:true
+  },{
+    name: `wikipedia_search`,
+    description:'Does wikipedia search',
+    schema:z.object({
+      topicName:z.string().describe("Name of the topic tio be searched on wikipedia")
+    }),
+    func:async function(topicName:string){
+      return "Some info from the wikipedia";
+    },
+    publicallyAvailaible:true
+  },{
+    name: `fetch_weather`,
+    description:'Fetched live weather of a city',
+    schema:z.object({
+      cityName:z.string().describe("Name of the city whose weather needs to be fetched")
+    }),
+    func:async function(cityName:string){
+      return "Some temperature";
     },
     publicallyAvailaible:true
   }]
