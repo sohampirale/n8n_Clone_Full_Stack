@@ -109,7 +109,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     console.log('Generated nodeTypes:', types);
     return types;
-  }, [nodeActions,triggerActions]); // Dependency on nodeActions
+  }, [nodeActions, triggerActions]); // Dependency on nodeActions and triggerActions
 
 
   const onNodesChange = (changes) => {
@@ -124,29 +124,51 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     }, 2000)
   }
 
-  function updateWorkflow(source,sourceRole,target,targetRole){
-    if(sourceRole=='trigger'){
-      if(targetRole=='node' || targetRole=='aiNode'){
+  function updateWorkflow(source:string, sourceRole:string, target:string, targetRole:string) {
+    console.log('inside updateWorkflow, sourceRole : ',sourceRole,' targetRole : ',targetRole);
+    if (sourceRole == 'trigger') {
+      if (targetRole == 'node') {
         //update the triggerIdentityNo for that node in the requestedNodes in workflow
-      } 
+        let targetObj=nodes.filter((node)=>node.identityNo==target)
+        if(targetObj && targetObj.length!=0){
+          targetObj=targetObj[0]
+        } else {
+          console.log('targetObj not found from nodes, returning');
+          return false;
+        }
+
+        console.log('targetObj : ',targetObj);
+        
+        const identityNo=targetObj.identityNo;
+
+        const existingNodeInWorkflow=workflow.requestedNodes.filter((node)=>node.identityNo==identityNo)
+
+        if(!existingNodeInWorkflow){
+          const newObjInWorkflow={
+            ...nodeObj,
+          }
+        }
+
+      }
     }
   }
 
   const onConnect = (params) => {
-    const { source, target } = params
+    const { source, target, sourceHandle, targetHandle } = params
     console.log('inside onConnect params : ', params)
 
-    const { node, aiNode, llm, tool ,trigger} = createdObjects
-    let sourceRole,targetRole;
+    const { node, aiNode, llm, tool, trigger } = createdObjects
+    let sourceRole, targetRole;
 
     if (node.includes(source)) {
       console.log('source is a node');
-      sourceRole='node'
+      sourceRole = 'node'
     } else if (aiNode.includes(source)) {
       console.log('source is an aiNode');
-      sourceRole='node'
-    }  else if(trigger[0]==source){
+      sourceRole = 'node'
+    } else if (trigger[0] == source) {
       console.log('Source is trigger');
+      sourceRole='trigger'
     } else {
       console.log('invalid source identityType, not forming this edge');
       return;
@@ -155,21 +177,52 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     if (node.includes(target)) {
       console.log('target is a node');
-      targetRole='node'
+      targetRole = 'node'
     } else if (aiNode.includes(target)) {
       console.log('target is an aiNode');
-      targetRole='aiNode'
+      targetRole = 'aiNode'
     } else if (llm.includes(target)) {
       console.log('target is an llm');
-      targetRole='llm'
+      targetRole = 'llm'
     } else if (tool.includes(target)) {
       console.log('target is a tool');
-      targetRole='tool'
+      targetRole = 'tool'
     } else {
       console.log('invalid target indentityType, not forming this edge');
       return;
     }
-    updateWorkflow(source,sourceRole,target,targetRole);
+
+    //rules
+    if (sourceRole == 'trigger') {
+      if (!(targetRole == 'node' || targetRole == 'aiNode')) {
+        console.log('Invalid edge,trigger cannot directly connect with : ', targetRole);
+        return;
+      }
+    } else if (sourceRole == 'node') {
+      if (!(targetRole == 'node' || targetRole == 'aiNode')) {
+        console.log('Invalid edge,node cannot directly connect with : ', targetRole);
+        return;
+      }
+    } else if (sourceRole == 'aiNode') {
+      if (sourceHandle == 'right') {
+        if (!(targetRole == 'node' || targetRole == 'aiNode')) {
+          console.log('Invalid edge,aiNode cannot forward request to  : ', targetRole);
+          return;
+        }
+      } else if (sourceHandle == 'top') {
+        if (!targetRole == 'llm') {
+          console.log('Invalid edge,aiNode cannot use  : ', targetRole, ' as LLM');
+          return;
+        }
+      } else if (sourceHandle == 'bottom') {
+        if (!targetRole == 'tool') {
+          console.log('Invalid edge,aiNode cannot use  : ', targetRole, ' as tool');
+          return;
+        }
+      }
+    } 
+
+    updateWorkflow(source, sourceRole, target, targetRole);
 
     const edge = {
       id: Math.random().toString(),
@@ -244,12 +297,25 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     //   { id: '1', type: 'WebHookNode', position: { x: 250, y: 25 }, data: { label: 'Webhook Trigger' } },
 
+    const id=Date.now().toString();
     const newNode = {
-      id: Date.now().toString(),
+      id,
+      identityNo:id,
       type,
       position,
-      data: { label: type, ...data },
+      data: { 
+        //here we put any data given by user
+        label:type
+      },
     };
+
+    if(instanceType=='node'){
+      newNode.nodeActionId=data._id
+      newNode.nodeAction=data
+    } else if(instanceType=='trigger'){
+      newNode.triggerAction=data;
+      newNode.triggerActionId=data._id
+    }
 
     console.log('newNode thats pushed onto nodes : ', newNode);
 
@@ -259,9 +325,9 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     });
 
     createdObjects[instanceType].push(newNode.id)
-    console.log('createdObjects : ',createdObjects);
-    
-    setCreatedObjects({...createdObjects})
+    console.log('createdObjects : ', createdObjects);
+
+    setCreatedObjects({ ...createdObjects })
   }
 
   const onInit = (instance) => {
@@ -413,7 +479,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
               }}
               onDragStart={onDragStart(triggerAction, 'trigger')}
             >
- 
+
               <strong>{triggerAction.name}</strong>
               <p style={{ fontSize: '12px', color: '#555', margin: '4px 0' }}>
                 Trigger action

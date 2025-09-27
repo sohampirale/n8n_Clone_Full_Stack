@@ -256,6 +256,7 @@ export function ReactFlowTriggerNode({ data }: { data: any }) {
       {/* Source handle on the right */}
       <Handle
         type="source"
+        id="right"
         position={Position.Right}
         style={{
           background: "#FF6B35",
