@@ -130,35 +130,35 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     if (sourceRole == 'trigger') {
       if (targetRole == 'node') {
         //update the triggerIdentityNo for that node in the requestedNodes in workflow
-        let targetObj = nodes.filter((node) => node.identityNo == target)
-        let sourceObj = nodes.filter((node) => node.identityNo == source)
+        let nodeObj = nodes.filter((node) => node.identityNo == target)
+        let triggerObj = nodes.filter((node) => node.identityNo == source)
 
-        if (targetObj && targetObj.length != 0) {
-          targetObj = targetObj[0]
+        if (nodeObj && nodeObj.length != 0) {
+          nodeObj = nodeObj[0]
         } else {
-          console.log('targetObj not found from nodes, returning');
+          console.log('nodeObj not found from nodes, returning');
           return false;
         }
 
-        if (sourceObj && sourceObj.length != 0) {
-          sourceObj = sourceObj[0]
+        if (triggerObj && triggerObj.length != 0) {
+          triggerObj = triggerObj[0]
         } else {
-          console.log('sourceObj not found from nodes, returning');
+          console.log('triggerObj not found from nodes, returning');
           return false;
         }
 
-        console.log('targetObj : ', targetObj);
-        console.log('sourceObj : ', sourceObj);
+        console.log('nodeObj : ', nodeObj);
+        console.log('triggerObj : ', triggerObj);
 
-        const identityNo = targetObj.identityNo;
 
-        const existingNodeInWorkflow = workflow.requestedNodes.filter((node) => node.identityNo == identityNo)
-
+        const existingNodeInWorkflow = workflow.requestedNodes.filter((node) => node.identityNo == nodeObj.identityNo)
         if (!existingNodeInWorkflow) {
-          const newObjInWorkflow = {
-            ...nodeObj,
-          }
+          console.log('nodeObj(target) does not exists in the workflow obj');
+          return false;
         }
+
+        existingNodeInWorkflow.prerequisiteNodesIdentityNos.push(triggerObj.identityNo)
+
 
       }
     }
@@ -311,32 +311,39 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     const id = Date.now().toString();
     const newNode = {
       id,
-      identityNo: id,
       type,
       position,
       data: {
-        //here we put any data given by user
         label: type
       },
     };
 
     if (instanceType == 'node') {
-      newNode.nodeActionId = data._id
-      newNode.nodeAction = data
-      newNode.prerequisiteNodesIdentityNos = []
+      const newNodeWorkflow = {
+        identityNo: id,
+        nodeActionId: data._id,
+        prerequisiteNodesIdentityNos: [],
+        nodeAction: data
+      }
+      workflow.requestedNodes.push(newNodeWorkflow)
     } else if (instanceType == 'trigger') {
 
       if (trigger) {
         console.log('Only single trigger can exist in a workflow');
-        
+
         const triggerId = trigger.id;
         const newNodes = nodes.filter((node) => node.id != triggerId)
-        const newEdges=edges.filter((edge)=>edge.source!=triggerId)
+        const newEdges = edges.filter((edge) => edge.source != triggerId)
         setEdges(newEdges)
         setNodes(newNodes)
       }
-      newNode.triggerAction = data;
-      newNode.triggerActionId = data._id
+
+      const newTriggerWorkflow = {
+        identityNo: id,
+        triggerActionId: data._id,
+        triggerAction: data
+      }
+      workflow.requestedTrigger = newTriggerWorkflow
       setTrigger(newNode)
     }
 

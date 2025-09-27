@@ -25,6 +25,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.10",
+    "bun": "^1.2.22",
     "dotenv": "^17.2.2",
     "typescript": "^5.9.2"
   }
