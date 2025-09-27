@@ -48,6 +48,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     requestedLLMS: []
   })
 
+  const [trigger, setTrigger] = useState(null)
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const reactFlowWrapper = useRef(null);
@@ -124,27 +125,37 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     }, 2000)
   }
 
-  function updateWorkflow(source:string, sourceRole:string, target:string, targetRole:string) {
-    console.log('inside updateWorkflow, sourceRole : ',sourceRole,' targetRole : ',targetRole);
+  function updateWorkflow(source: string, sourceRole: string, target: string, targetRole: string) {
+    console.log('inside updateWorkflow, sourceRole : ', sourceRole, ' targetRole : ', targetRole);
     if (sourceRole == 'trigger') {
       if (targetRole == 'node') {
         //update the triggerIdentityNo for that node in the requestedNodes in workflow
-        let targetObj=nodes.filter((node)=>node.identityNo==target)
-        if(targetObj && targetObj.length!=0){
-          targetObj=targetObj[0]
+        let targetObj = nodes.filter((node) => node.identityNo == target)
+        let sourceObj = nodes.filter((node) => node.identityNo == source)
+
+        if (targetObj && targetObj.length != 0) {
+          targetObj = targetObj[0]
         } else {
           console.log('targetObj not found from nodes, returning');
           return false;
         }
 
-        console.log('targetObj : ',targetObj);
-        
-        const identityNo=targetObj.identityNo;
+        if (sourceObj && sourceObj.length != 0) {
+          sourceObj = sourceObj[0]
+        } else {
+          console.log('sourceObj not found from nodes, returning');
+          return false;
+        }
 
-        const existingNodeInWorkflow=workflow.requestedNodes.filter((node)=>node.identityNo==identityNo)
+        console.log('targetObj : ', targetObj);
+        console.log('sourceObj : ', sourceObj);
 
-        if(!existingNodeInWorkflow){
-          const newObjInWorkflow={
+        const identityNo = targetObj.identityNo;
+
+        const existingNodeInWorkflow = workflow.requestedNodes.filter((node) => node.identityNo == identityNo)
+
+        if (!existingNodeInWorkflow) {
+          const newObjInWorkflow = {
             ...nodeObj,
           }
         }
@@ -168,7 +179,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       sourceRole = 'node'
     } else if (trigger[0] == source) {
       console.log('Source is trigger');
-      sourceRole='trigger'
+      sourceRole = 'trigger'
     } else {
       console.log('invalid source identityType, not forming this edge');
       return;
@@ -220,7 +231,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
           return;
         }
       }
-    } 
+    }
 
     updateWorkflow(source, sourceRole, target, targetRole);
 
@@ -297,24 +308,36 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     //   { id: '1', type: 'WebHookNode', position: { x: 250, y: 25 }, data: { label: 'Webhook Trigger' } },
 
-    const id=Date.now().toString();
+    const id = Date.now().toString();
     const newNode = {
       id,
-      identityNo:id,
+      identityNo: id,
       type,
       position,
-      data: { 
+      data: {
         //here we put any data given by user
-        label:type
+        label: type
       },
     };
 
-    if(instanceType=='node'){
-      newNode.nodeActionId=data._id
-      newNode.nodeAction=data
-    } else if(instanceType=='trigger'){
-      newNode.triggerAction=data;
-      newNode.triggerActionId=data._id
+    if (instanceType == 'node') {
+      newNode.nodeActionId = data._id
+      newNode.nodeAction = data
+      newNode.prerequisiteNodesIdentityNos = []
+    } else if (instanceType == 'trigger') {
+
+      if (trigger) {
+        console.log('Only single trigger can exist in a workflow');
+        
+        const triggerId = trigger.id;
+        const newNodes = nodes.filter((node) => node.id != triggerId)
+        const newEdges=edges.filter((edge)=>edge.source!=triggerId)
+        setEdges(newEdges)
+        setNodes(newNodes)
+      }
+      newNode.triggerAction = data;
+      newNode.triggerActionId = data._id
+      setTrigger(newNode)
     }
 
     console.log('newNode thats pushed onto nodes : ', newNode);
