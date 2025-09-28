@@ -51,6 +51,11 @@ const nodeSchema=new Schema({
     type:ObjectId,
     ref:"Trigger",
     default:null
+  },
+  credentialId:{
+    type:ObjectId,
+    ref:"Credential",
+    default:null
   }
 },{
   timestamps:true

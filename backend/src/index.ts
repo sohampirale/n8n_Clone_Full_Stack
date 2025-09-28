@@ -11,6 +11,7 @@ import triggerRouter from "./routes/trigger.route.js"
 import actionRouter from "./routes/action.route.js"
 import toolsRouter from "./routes/tool.route.js"
 import cors from "cors"
+import executionInstanceRouter from "./routes/execution.route.js"
 
 const app = express()
 app.use(express.json())
@@ -32,6 +33,7 @@ app.use("/api/v1/workflow", workflowRouter)
 app.use("/api/v1/trigger", triggerRouter)
 app.use("/api/v1/action", actionRouter)
 app.use("/api/v1/tool", toolsRouter)
+app.use("/api/v1/execution", executionInstanceRouter)
 
 startServer(app)
 
