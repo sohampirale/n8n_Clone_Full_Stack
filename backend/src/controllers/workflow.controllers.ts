@@ -7,6 +7,7 @@ import { Trigger, TriggerAction } from "../models/trigger.model.js";
 import { generateSlug } from "../helpers/slug.js";
 import { Node, NodeAction } from "../models/node.model.js";
 import { Tool, ToolForm } from "../models/tool.model.js";
+import { LLM } from "../models/llm.model.js";
 
 /**
  * Get all workflows of user
@@ -138,7 +139,7 @@ export async function updateWorkflow(req: Request, res: Response) {
         new ApiResponse(false, `Invalid request,new workflow not provided`)
       )
     }
-    const { name, requestedTrigger, requestedNodes, requestedTools } = workflow
+    const { name, requestedTrigger, requestedNodes, requestedTools,requestedLLMS } = workflow
     if (!name || !requestedTrigger || !requestedNodes) {
       return res.status(400).json(
         new ApiResponse(false, `Invalid request,improper workflow obj provided`)
@@ -178,6 +179,14 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
     await Node.deleteMany({
+      workflowId:existingWorkflow._id
+    })
+
+    await Tool.deleteMany({
+      workflowId:existingWorkflow._id
+    })
+
+    await LLM.deleteMany({
       workflowId:existingWorkflow._id
     })
 
@@ -238,7 +247,7 @@ export async function updateWorkflow(req: Request, res: Response) {
       data: data ?? {}
     })
 
-    existingWorkflow.trigger = trigger
+    existingWorkflow.trigger = trigger._id
     requestedTrigger.triggerId = trigger._id;
 
     //creating nodes object
@@ -315,23 +324,15 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
     //creating Tool objects from requestedTools
-    //deleting all the old Tool objects with this workflowId
-
-    await Tool.deleteMany({
-      workflowId:existingWorkflow._id
-    })
-
+    const createdTools=[]
     for(let i=0;i<requestedTools.length;i++){
-      const {aiNodeIdentityNo:strAINodeIdentityNo,toolFormId,data,additionalDescription}=requestedTools[i]
+      const {aiNodeIdentityNo,toolFormId,data,additionalDescription}=requestedTools[i]
       
       if(!aiNodeIdentityNo ){
         return res.status(400).json(
           new ApiResponse(false,`Invalid AI node identity no.`)
         )
-      }
-
-      const aiNodeIdentityNo=Number(strAINodeIdentityNo);
-      
+      }      
 
       if(createdNodesMap.has(aiNodeIdentityNo)){
         if(!await ToolForm.exists({_id:toolFormId})){
@@ -352,11 +353,40 @@ export async function updateWorkflow(req: Request, res: Response) {
         })
 
         console.log('created tool : ',tool);
-        
+        createdTools.push(tool._id)
       } else {
         console.log('requested aiNodeIdentityNo not found in the createdNodesMap : ',aiNodeIdentityNo);
         console.log('createdNodesMap : ',createdNodesMap);   
       }
+    }
+
+    const createdLLMS=[]
+    for(let i=0;i<requestedLLMS.length;i++){
+      const {model,aiNodeIdentityNo}=requestedLLMS[i]
+      if(!model){
+        return res.status(400).json(
+          new ApiResponse(false,`Model name not received for the llm created`)
+        )
+      } else if(!aiNodeIdentityNo){
+        return res.status(400).json(
+          new ApiResponse(false,`Requested llm is not attached with any AI Node`)
+        )
+      }
+
+      if(!createdNodesMap.has(aiNodeIdentityNo)){
+        return res.status(404).json(
+          new ApiResponse(false,`aiNode with given aiNodeIdentityNo not found`)
+        )
+      }
+      const aiNodeObj=createdNodesMap.get(aiNodeIdentityNo)
+
+      const llm=await LLM.create({
+        model,
+        owner:userId,
+        workflowId:existingWorkflow._id,
+        aiNodeId:aiNodeObj._id
+      })
+      createdLLMS.push(llm._id)
     }
 
     const triggerId = requestedTrigger.triggerId;
@@ -368,6 +398,9 @@ export async function updateWorkflow(req: Request, res: Response) {
     existingWorkflow.trigger = triggerId
     existingWorkflow.nodes = nodes;
     existingWorkflow.active = true
+    existingWorkflow.tools=createdTools
+    existingWorkflow.llms=createdLLMS
+
     await existingWorkflow.save()
 
     return res.status(200).json(

@@ -15,6 +15,7 @@ import cors from "cors"
 const app = express()
 app.use(express.json())
 app.use(cookieParser())
+app.use(express.urlencoded({ extended: true }));
 
 app.use(cors({
   origin: process.env.FRONTEND_URL,
@@ -37,7 +38,7 @@ startServer(app)
 setTimeout(() => {
   //used seed functions here as needed 
   // createNodeActions()
-  // createTriggerActions()
+  createTriggerActions()
   // createCredentialForms()
   //  createToolForm()
 }, 5000)

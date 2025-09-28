@@ -6,11 +6,11 @@ import {z} from 'zod'
 
 export async function createTriggerActions() {
   const triggerActionData = [{
-    name: `webhook`,
+    name: `trigger:webhook`,
     queueName: `trigger:webhook`,
     icon: `https://www.svix.com/resources/assets/images/color-webhook-240-1deccb0e365ff4ea493396ad28638fb7.png`
   }, {
-    name: `manual_click`,
+    name: `trigger:manual_click`,
     queueName: `trigger:manual_click`,
     icon: `https://media.gettyimages.com/id/1974389824/vector/cursor-icon-click.jpg?s=2048x2048&w=gi&k=20&c=Vds_aGP00pVqkX58Ye5WmgsepMHj6JH_8VJziB2t3YI=`
   }]

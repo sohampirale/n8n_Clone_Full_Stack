@@ -19,8 +19,7 @@ const llmSchema = new Schema({
     aiNodeId: {
         type: ObjectId,
         ref: 'Node',
-        required: true,
-        unique: true // we can remove this and make sure everytime new worklflow is updated that time delete all the llms having that workflowId
+        required: true
     }
 }, {
     timestamps: true

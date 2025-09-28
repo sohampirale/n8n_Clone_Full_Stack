@@ -20,7 +20,6 @@ const triggerActionSchema=new Schema({
     default:true
   }
 },{
-
   timestamps:true
 })
 
@@ -44,8 +43,9 @@ const triggerSchema=new Schema({
 })
 
 const triggerInstanceSchema= new Schema({
-  executeWorkflowId:{
-    type:String,
+  workflowInstanceId:{
+    type:ObjectId,
+    ref:"WorkflowInstance",
     required:true
   },
   triggerId:{
@@ -58,6 +58,11 @@ const triggerInstanceSchema= new Schema({
     ref:"Workflow",
     required:true
   },
+  owner:{
+    type:ObjectId,
+    ref:"User",
+    required:true
+  },
   inData:{
     type:Schema.Types.Mixed,
     default:{}
@@ -68,7 +73,7 @@ const triggerInstanceSchema= new Schema({
   },
   executeSuccess:{
     type:Boolean,
-    default:false
+    default:true
   },
   error:{
     type:Schema.Types.Mixed,
