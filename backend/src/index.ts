@@ -40,7 +40,7 @@ startServer(app)
 setTimeout(() => {
   //used seed functions here as needed 
   // createNodeActions()
-  createTriggerActions()
+  // createTriggerActions()
   // createCredentialForms()
   //  createToolForm()
 }, 5000)

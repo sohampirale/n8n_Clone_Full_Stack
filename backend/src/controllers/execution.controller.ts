@@ -27,9 +27,12 @@ export async function executeManualTrigger(req: Request, res: Response) {
         const userId = new mongoose.Types.ObjectId(_id)
         const { username, slug } = req.params
 
-        const user = await User.find({
+        const user = await User.findOne({
             username
         })
+
+        console.log('user : ',user);
+        
         if (!user) {
             return res.status(404).json(
                 new ApiResponse(false, `User not found with given username in query`)
