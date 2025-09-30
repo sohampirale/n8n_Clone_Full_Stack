@@ -6,6 +6,7 @@ import { Resend } from "resend"
 import Mustache from "mustache"
 import axios from "axios"
 
+//TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
     workflowInstanceId: mongoose.Types.ObjectId;
     triggerInstanceId: mongoose.Types.ObjectId;
@@ -184,7 +185,7 @@ export default class Executor {
                 throw new Error('Node action not found for the requested node')
             } else if (!node.nodeAction.name == 'telegram_send_message') {
                 throw new Error('Node action of the requested node is not telegram_send_message')
-            } else if (!nodeIdStr.nodeAction.publicallyAvailaible) {
+            } else if (!node.nodeAction.publicallyAvailaible) {
                 throw new Error('Telegram_send_message node is currently not availaible')
             }
             // else if (!node.credential) {
@@ -376,7 +377,7 @@ export default class Executor {
                     }
                 }, {
                     $unwind: {
-                        path: "$credentialForm",
+                        path: "$nodeAction",
                         preserveNullAndEmptyArrays: true
                     }
                 }, {
@@ -423,12 +424,11 @@ export default class Executor {
 
             node = node[0]
             if (!node.nodeAction) {
-                console.log('Node action not found for the requested node');
-                throw new Error()
+                throw new Error('Node action not found for the requested node')
             } else if (!node.nodeAction.name == 'gmail_send_email') {
                 console.log('Node action of the requested node is not gmail_send_email');
                 throw new Error()
-            } else if (!nodeIdStr.nodeAction.publicallyAvailaible) {
+            } else if (!node.nodeAction.publicallyAvailaible) {
                 console.log('gmail_send_email node is currently not availaible');
                 throw new Error()
             }
@@ -449,7 +449,7 @@ export default class Executor {
             let to = 'sohampirale20504@gmail.com'
             let from = "Acme <onboarding@resend.dev>"
             let subject = "This is email from n8n_clone"
-            let html = "Hey this is n8n_clone sending you messge our "
+            let html = "Hey this is n8n_clone sending you email"
 
             if (!to || !from || !subject || !html) {
                 console.log('Received gmail_send_email node has insufficient data');
@@ -513,6 +513,11 @@ export default class Executor {
                         foreignField: "_id",
                         localField: 'nodeActionId',
                         as: "nodeAction"
+                    }
+                },{
+                    $unwind:{
+                        path:"$nodeAction",
+                        preserveNullAndEmptyArrays:true
                     }
                 }
             ])

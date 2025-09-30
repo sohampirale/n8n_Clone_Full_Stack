@@ -14,6 +14,7 @@ async function worker() {
     while(1){
         try {
             const redis = await getRedisClient()
+            console.log('Doing brPop');
             const {element}: {element:IstartExecutionObject} = await redis.brPop("executor:trigger", 0)
             const startExecutionObject=JSON.parse(element)
             console.log('startExecutionObject : ', startExecutionObject);
