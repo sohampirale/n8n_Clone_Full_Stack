@@ -68,7 +68,7 @@ export async function createCredentialForms() {
     publicallyAvailaible:true,
   }, {
     name: `telegram`,
-    requiredFields:["API_KEY"],
+    requiredFields:["bot_token"],
     publicallyAvailaible:true,
   }]
 

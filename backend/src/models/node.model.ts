@@ -86,11 +86,11 @@ const nodeInstanceSchema= new Schema({
   },
   executeSuccess:{
     type:Boolean,
-    default:false
+    default:true
   },
   error:{
     type:Schema.Types.Mixed,
-    default:undefined
+    default:{}
   }
 },{
   timestamps:true

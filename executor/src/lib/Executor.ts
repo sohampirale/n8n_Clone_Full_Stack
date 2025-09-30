@@ -3,6 +3,8 @@ import type { IstartExecutionObject } from "../interfaces";
 import { Node, NodeAction, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
 import { Resend } from "resend"
+import Mustache from "mustache"
+import axios from "axios"
 
 export default class Executor {
     workflowInstanceId: mongoose.Types.ObjectId;
@@ -100,26 +102,152 @@ export default class Executor {
         }
     }
 
-    async telegram_send_message(nodeId: string) {
-        console.log('Message send using telegram');
-        const telegramSendMessageInstance = await NodeInstance.create({
-            workflowInstanceId: this.workflowInstanceId,
-            nodeId,
-            workflowId: this.workflowId,
-            inData: {},
-            outData: {
-                telegram_send_message: 'Message sent sucesfully using telegram node'
-            }
-        })
+    /**
+     * 1.retive that node also lookup the nodeAction from db using nodeId
+     * 2.cross check if nodeAction.name=='telegram_send_message'
+     * 3.retrive credential using the node.credentialId also lookup for credentialForm using credentialFormId and 
+     * if credential not found reject - telegram credential not found for this node
+     * then cross check if the credential.credentialFormId.name =='telegram' if not reject - incorrect credential attached to this node
+     * 4.retrive bot_token from node.credential.data.bot_token if not found reject - bot_token not foud for the attached credential
+     * 5.retrive chat_id and text from inData and then check if all of the required fields are given 
+     * 6.use Mustache to render it using inData
+     * 7.send message using telegram api 
+     * 8.create the instance of that node
+     * 9.call handleNextDependingNodeExecution
+     */
 
-        this.handleNextDependingNodeExecution(nodeId)
-        return;
+    async telegram_send_message(nodeIdStr: string, inData: any) {
 
-        const bot_api = "8287220121:AAHPZ6uFAJB_vUsTW1AukNYFHHkrV_uUBAA"
         try {
-            // const chatId = `${}`
-        } catch (error) {
 
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+
+            let node = await Node.aggregate([{
+                $match: {
+                    _id: nodeId
+                }
+            }, {
+                $lookup: {
+                    from: "nodeactions",
+                    foreignField: "_id",
+                    localField: "nodeActionId",
+                    as: "nodeAction"
+                }
+            }, {
+                $unwind: {
+                    path: "$nodeAction",
+                    preserveNullAndEmptyArrays: true
+                }
+            }, {
+                $lookup: {
+                    from: "credentials",
+                    foreignField: "_id",
+                    localField: "credentialId",
+                    as: "credential",
+                    pipeline: [{
+                        $lookup: {
+                            from: "credentialforms",
+                            foreignField: "_id",
+                            localField: "credentialFormId",
+                            as: "credentialForm"
+                        }
+                    }, {
+                        $unwind: {
+                            path: "$credentialForm",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    }]
+                }
+            }, {
+                $unwind: {
+                    path: "$credential",
+                    preserveNullAndEmptyArrays: true
+                }
+            }])
+
+            if (!node || node.length == 0) {
+                throw new Error('Node not found with given nodeId for telegram_send_message')
+            }
+            node = node[0]
+
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId,
+                workflowId: this.workflowId,
+                inData,
+                outData: {},
+                executeSuccess: true,
+                error: {}
+            })
+
+            if (!node.nodeAction) {
+                throw new Error('Node action not found for the requested node')
+            } else if (!node.nodeAction.name == 'telegram_send_message') {
+                throw new Error('Node action of the requested node is not telegram_send_message')
+            } else if (!nodeIdStr.nodeAction.publicallyAvailaible) {
+                throw new Error('Telegram_send_message node is currently not availaible')
+            }
+            // else if (!node.credential) {
+            //     console.log('Credential not attached for the telegram_send_message node');
+            //     throw new Error()
+            // } else if (!node.credential.credentialForm) {
+            //     console.log('CredentialForm not foud for the credential attached to telegram_send_message');
+            //     throw new Error()
+            // } else if (node.credential.credentialForm.name != 'telegram') {
+            //     console.log('Credential Form of the attached credential is not telegram credential');
+            //     throw new Error()
+            // }
+
+
+
+            // const bot_token = node.credential.data.bot_token
+
+            //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
+            const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+
+            if (!bot_token) {
+                throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
+            }
+
+            // let {chat_id,text}=node.data
+            //:TODO uncomment line above and remove line below
+            let chat_id = '940083925', text = 'Hey there this is message sent by telegram_send_message node from n8n_clone'
+
+
+            if (!chat_id || !text) {
+                console.log('chat_id or text not given for telegram_send_message node');
+                return;
+            }
+
+            chat_id = Mustache.render(chat_id, inData)
+            text = Mustache.render(text, inData)
+
+            const url = `https://api.telegram.org/bot${bot_token}/sendMessage`
+            const { data: response } = await axios.post(url, {
+                chat_id,
+                text,
+                parse_mode: "HTML"
+            })
+
+            console.log('Message sent : ', response);
+            Object.assign(nodeInstance.outData, response)
+            await nodeInstance.save()
+            this.handleNextDependingNodeExecution(nodeId)
+        } catch (error) {
+            try {
+                const existingNodeInstance = await NodeInstance.findOne({
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: new mongoose.Types.ObjectId(nodeIdStr)
+                })
+                if (existingNodeInstance) {
+                    existingNodeInstance.executeSuccess = false
+                    existingNodeInstance.error=error
+                    await existingNodeInstance?.save()
+                }
+            } catch (error) {
+
+            }
+            this.handleNextDependingNodeExecution(nodeIdStr)
         }
     }
 
@@ -241,10 +369,35 @@ export default class Executor {
                     }
                 }, {
                     $lookup: {
+                        from: "nodeactions",
+                        foreignField: "_id",
+                        localField: "nodeActionId",
+                        as: "nodeAction"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$credentialForm",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }, {
+                    $lookup: {
                         from: "credentials",
                         foreignField: "_id",
                         localField: "credentialId",
-                        as: "credential"
+                        as: "credential",
+                        pipeline: [{
+                            $lookup: {
+                                from: "credentialforms",
+                                foreignField: "_id",
+                                localField: "credentialFormId",
+                                as: "credentialForm"
+                            }
+                        }, {
+                            $unwind: {
+                                path: "$credentialForm",
+                                preserveNullAndEmptyArrays: true
+                            }
+                        }]
                     }
                 }, {
                     $unwind: {
@@ -259,20 +412,54 @@ export default class Executor {
                 return;
             }
 
-            node = node[0]
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId,
+                workflowId: this.workflowId,
+                inData,
+                outData: {},
+                executeSuccess: true
+            })
 
-            const { to, from, subject, html } = node.data
+            node = node[0]
+            if (!node.nodeAction) {
+                console.log('Node action not found for the requested node');
+                throw new Error()
+            } else if (!node.nodeAction.name == 'gmail_send_email') {
+                console.log('Node action of the requested node is not gmail_send_email');
+                throw new Error()
+            } else if (!nodeIdStr.nodeAction.publicallyAvailaible) {
+                console.log('gmail_send_email node is currently not availaible');
+                throw new Error()
+            }
+            // else if (!node.credential) {
+            //     console.log('Credential not attached for the gmail_send_email node');
+            //     throw new Error()
+            // } else if (!node.credential.credentialForm) {
+            //     console.log('CredentialForm not found for the credential attached to gmail_send_email');
+            //     throw new Error()
+            // } else if (node.credential.credentialForm.name != 'gmail') {
+            //     console.log('Credential Form of the attached credential of gmail_send_email node is not gmail credential');
+            //     throw new Error()
+            // }
+
+            // let { to, from, subject, html } = node.data
+            //:TODO uncommment line above and remove lines below
+
+            let to = 'sohampirale20504@gmail.com'
+            let from = "Acme <onboarding@resend.dev>"
+            let subject = "This is email from n8n_clone"
+            let html = "Hey this is n8n_clone sending you messge our "
+
             if (!to || !from || !subject || !html) {
                 console.log('Received gmail_send_email node has insufficient data');
                 return;
             }
-            // else if (!node.credentialId) {
-            //     console.log('gmail_send_email has no attached credential with it,attach RESEND credential');
-            //     return;
-            // } else if (!node.credential) {
-            //     console.log('Credential not found with given credentialId of this node');
-            //     return;
-            // }
+
+            to = Mustache.render(to, inData)
+            from = Mustache.render(from, inData)
+            subject = Mustache.render(subject, inData)
+            html = Mustache.render(html, inData)
 
             // const RESEND_API_KEY = node.credential?.data.RESEND_API_KEY
 
@@ -285,19 +472,12 @@ export default class Executor {
                 return;
             }
 
+
+
             const email_response = await this.helper_resend_send_email(RESEND_API_KEY, to, from, subject, html)
 
-            const nodeInstance = await NodeInstance.create({
-                workflowInstanceId: this.workflowInstanceId,
-                nodeId,
-                workflowId: this.workflowId,
-                inData,
-                outData: {
-                    ...email_response
-                },
-                executeSuccess: true
-            })
-
+            Object.assign(nodeInstance.outData, email_response);
+            await nodeInstance.save()
 
             this.handleNextDependingNodeExecution(nodeId)
 
@@ -323,16 +503,16 @@ export default class Executor {
 
             const allDependingNodes = await Node.aggregate([
                 {
-                    $match:{
+                    $match: {
                         workflowId: this.workflowId,
                         prerequisiteNodes: nodeId
                     }
-                },{
-                    $lookup:{
-                        from:"nodeactions",
-                        foreignField:"_id",
-                        localField:'nodeActionId',
-                        as:"nodeAction"
+                }, {
+                    $lookup: {
+                        from: "nodeactions",
+                        foreignField: "_id",
+                        localField: 'nodeActionId',
+                        as: "nodeAction"
                     }
                 }
             ])
