@@ -1,8 +1,8 @@
-import mongoose from "mongoose";
+import mongoose, { isObjectIdOrHexString } from "mongoose";
 import type { IstartExecutionObject } from "../interfaces";
 import { Node, NodeAction, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
-import {Resend} from "resend"
+import { Resend } from "resend"
 
 export default class Executor {
     workflowInstanceId: mongoose.Types.ObjectId;
@@ -83,13 +83,13 @@ export default class Executor {
                     console.log('node instance to be started is : action:telegram_send_message');
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
-
+                    this.telegram_send_message(allSolelyDependentNodes[i]._id)
                 } else if (nodeActionName == 'gmail_send_email') {
                     console.log('node instance to be started is : action:gmail_send_email');
 
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
-                    this.gmail_send_email(allSolelyDependentNodes[i]._id,inData);
+                    this.gmail_send_email(allSolelyDependentNodes[i]._id, inData);
                 }
             }
 
@@ -101,6 +101,20 @@ export default class Executor {
     }
 
     async telegram_send_message(nodeId: string) {
+        console.log('Message send using telegram');
+        const telegramSendMessageInstance = await NodeInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            nodeId,
+            workflowId: this.workflowId,
+            inData: {},
+            outData: {
+                telegram_send_message: 'Message sent sucesfully using telegram node'
+            }
+        })
+
+        this.handleNextDependingNodeExecution(nodeId)
+        return;
+
         const bot_api = "8287220121:AAHPZ6uFAJB_vUsTW1AukNYFHHkrV_uUBAA"
         try {
             // const chatId = `${}`
@@ -217,7 +231,7 @@ export default class Executor {
     async gmail_send_email(nodeIdStr: string, inData: any) {
         //creating the inData object with the help of all the prerequisiteNodes and maybe triggerId node that node 
         console.log('inside gmail_send_email');
-        
+
         try {
             const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
             let node = await Node.aggregate([
@@ -247,11 +261,11 @@ export default class Executor {
 
             node = node[0]
 
-            const { to, from, subject,html } = node.data
-            if (!to || !from ||!subject || !html) {
+            const { to, from, subject, html } = node.data
+            if (!to || !from || !subject || !html) {
                 console.log('Received gmail_send_email node has insufficient data');
                 return;
-            } 
+            }
             // else if (!node.credentialId) {
             //     console.log('gmail_send_email has no attached credential with it,attach RESEND credential');
             //     return;
@@ -271,26 +285,26 @@ export default class Executor {
                 return;
             }
 
-            const email_response = await this.helper_resend_send_email(RESEND_API_KEY,to,from,subject,html)
+            const email_response = await this.helper_resend_send_email(RESEND_API_KEY, to, from, subject, html)
 
             const nodeInstance = await NodeInstance.create({
-                workflowInstanceId:this.workflowInstanceId,
+                workflowInstanceId: this.workflowInstanceId,
                 nodeId,
-                workflowId:this.workflowId,
+                workflowId: this.workflowId,
                 inData,
-                outData:{
+                outData: {
                     ...email_response
                 },
-                executeSuccess:true
+                executeSuccess: true
             })
 
 
             this.handleNextDependingNodeExecution(nodeId)
-            
+
 
         } catch (error) {
-            console.log('ERROR :: gmail_send_email ',error);
-            
+            console.log('ERROR :: gmail_send_email ', error);
+
         }
     }
 
@@ -302,48 +316,112 @@ export default class Executor {
      * 3.if now the node.allPrerequisitesSuccessNeeded is true then we need to also retrive all the instances from the prerequisiteNodesIds and then check if they are a success or not - if any one of it is false then continue
      * 4.if allPrerequisitesSuccessNeeded if false then call the handler of that node action
      */
-   
-    async handleNextDependingNodeExecution(nodeIdStr:string){
+
+    async handleNextDependingNodeExecution(nodeIdStr: string) {
         try {
             const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
 
-            const allDependingNodes = await Node.find({
-                workflowId:this.workflowId,
-                prerequisiteNodes:nodeId
-            })
+            const allDependingNodes = await Node.aggregate([
+                {
+                    $match:{
+                        workflowId: this.workflowId,
+                        prerequisiteNodes: nodeId
+                    }
+                },{
+                    $lookup:{
+                        from:"nodeactions",
+                        foreignField:"_id",
+                        localField:'nodeActionId',
+                        as:"nodeAction"
+                    }
+                }
+            ])
 
-            console.log('allDependingNodes : ',allDependingNodes);
-            for(let i=0;i<allDependingNodes.length;i++){
-                const preqrequisiteNodesIds=allDependingNodes[i].prerequisiteNodes
+            console.log('allDependingNodes : ', allDependingNodes);
+            for (let i = 0; i < allDependingNodes.length; i++) {
+                const preqrequisiteNodesIds = allDependingNodes[i].prerequisiteNodes
 
                 const totalInstancesOfPreceedingNodes = await NodeInstance.countDocuments({
-                    workflowInstanceId:this.workflowInstanceId,
-                    nodeId:{
-                        $in:preqrequisiteNodesIds
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: {
+                        $in: preqrequisiteNodesIds
                     }
                 })
 
-                console.log('totalInstancesOfPreceedingNodes : ',totalInstancesOfPreceedingNodes);
-                
-                if(totalInstancesOfPreceedingNodes !=preqrequisiteNodesIds.length){
-                    console.log('all prerequisites are noty yet fullfilled');
+                console.log('totalInstancesOfPreceedingNodes : ', totalInstancesOfPreceedingNodes);
+
+                if (totalInstancesOfPreceedingNodes != preqrequisiteNodesIds.length) {
+                    console.log('all prerequisites are not yet fullfilled');
                     return;
                 } else {
-                    console.log('all prerequisites fullfilled');
-                    const allPrerequisiteInstances = await NodeInstance.find({
-                        workflowInstanceId:this.workflowInstanceId,
-                        nodeId:{
-                            $in:preqrequisiteNodesIds
+                    console.log('all prerequisite nodes are executed');
+
+                    if (allDependingNodes[i].allPrerequisitesSuccessNeeded) {
+                        const totalSuccessfullPreceedingInstances = await NodeInstance.countDocuments({
+                            workflowInstanceId: this.workflowInstanceId,
+                            nodeId: {
+                                $in: preqrequisiteNodesIds
+                            },
+                            executeSuccess: true
+                        })
+
+                        if (totalSuccessfullPreceedingInstances != totalInstancesOfPreceedingNodes) {
+                            console.log('all precedding node instances are not successful so execution of this node stops here');
+                            return;
                         }
-                    })
+
+                        const nodeAction = await NodeAction.findOne({
+                            _id: allDependingNodes[i]?.nodeActionId
+                        })
+                        if (!nodeAction) {
+                            console.log('Node action not found of the node');
+                            return;
+                        }
+
+                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+
+                    } else {
+                        const nodeAction = await NodeAction.findOne({
+                            _id: allDependingNodes[i]?.nodeActionId
+                        })
+
+                        if (!nodeAction) {
+                            console.log('Node action not found of the node');
+                            return;
+                        }
+
+                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+                    }
                 }
             }
         } catch (error) {
-            console.log('ERROR :: handleNextDependingNodeExecution : ',error);
+            console.log('ERROR :: handleNextDependingNodeExecution : ', error);
         }
     }
 
-    async helper_resend_send_email(RESEND_API_KEY: string, to: string, from: string,subject:string, html: string) {
+    async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId, nodeAction: any) {
+        try {
+            if (!nodeAction) {
+                console.log('nodeAction not received of that node');
+                return;
+            }
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            const nodeActionName = nodeAction.name
+            if (nodeActionName == 'gmail_send_email') {
+                const inData = await this.inDataProducer(nodeId);
+                console.log('inData received is : ', inData);
+                this.gmail_send_email(nodeId, inData)
+            } else if (nodeActionName == 'telegram_send_message') {
+                const inData = await this.inDataProducer(nodeId)
+                this.telegram_send_message(nodeId, inData)
+            }
+        } catch (error) {
+            console.log('ERROR :: callRespectiveHandler : ', error);
+
+        }
+    }
+
+    async helper_resend_send_email(RESEND_API_KEY: string, to: string, from: string, subject: string, html: string) {
         try {
             const resend = new Resend(RESEND_API_KEY);
 
