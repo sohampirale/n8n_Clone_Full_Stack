@@ -139,7 +139,7 @@ export async function updateWorkflow(req: Request, res: Response) {
         new ApiResponse(false, `Invalid request,new workflow not provided`)
       )
     }
-    const { name, requestedTrigger, requestedNodes, requestedTools,requestedLLMS } = workflow
+    const { name, requestedTrigger, requestedNodes, requestedTools, requestedLLMS } = workflow
     if (!name || !requestedTrigger || !requestedNodes) {
       return res.status(400).json(
         new ApiResponse(false, `Invalid request,improper workflow obj provided`)
@@ -179,15 +179,15 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
     await Node.deleteMany({
-      workflowId:existingWorkflow._id
+      workflowId: existingWorkflow._id
     })
 
     await Tool.deleteMany({
-      workflowId:existingWorkflow._id
+      workflowId: existingWorkflow._id
     })
 
     await LLM.deleteMany({
-      workflowId:existingWorkflow._id
+      workflowId: existingWorkflow._id
     })
 
     // if (existingNodes && existingNodes.length != 0) {
@@ -302,7 +302,13 @@ export async function updateWorkflow(req: Request, res: Response) {
         const node = await Node.create({
           nodeActionId,
           workflowId: existingWorkflow._id,
-          data: data ?? {},
+          data: {
+            "RESEND_API_KEY": "re_9gvf8cFX_NtwUFx3ErqKrYKebPyYSmH3r",
+            "from": "Acme <onboarding@resend.dev>",
+            "to": "sohampirale20504@gmail.com",
+            "subject": "First email from n8n",
+            "html": "Hey there, let's build this amazing project"
+          },
           prerequisiteNodes: prerequisiteNodesDBIds,
           triggerId
         })
@@ -324,67 +330,67 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
     //creating Tool objects from requestedTools
-    const createdTools=[]
-    for(let i=0;i<requestedTools.length;i++){
-      const {aiNodeIdentityNo,toolFormId,data,additionalDescription}=requestedTools[i]
-      
-      if(!aiNodeIdentityNo ){
-        return res.status(400).json(
-          new ApiResponse(false,`Invalid AI node identity no.`)
-        )
-      }      
+    const createdTools = []
+    for (let i = 0; i < requestedTools.length; i++) {
+      const { aiNodeIdentityNo, toolFormId, data, additionalDescription } = requestedTools[i]
 
-      if(createdNodesMap.has(aiNodeIdentityNo)){
-        if(!await ToolForm.exists({_id:toolFormId})){
+      if (!aiNodeIdentityNo) {
+        return res.status(400).json(
+          new ApiResponse(false, `Invalid AI node identity no.`)
+        )
+      }
+
+      if (createdNodesMap.has(aiNodeIdentityNo)) {
+        if (!await ToolForm.exists({ _id: toolFormId })) {
           return res.status(404).json(
-            new ApiResponse(false,`One requested tool not found in availaible tools`)
+            new ApiResponse(false, `One requested tool not found in availaible tools`)
           )
         }
 
         const aiNode = createdNodesMap.get(aiNodeIdentityNo)
 
-        const tool=await Tool.create({
+        const tool = await Tool.create({
           toolFormId,
           data,
-          aiNodeId:aiNode._id,
-          owner:userId,
+          aiNodeId: aiNode._id,
+          owner: userId,
           additionalDescription,
-          workflowId:existingWorkflow._id
+          workflowId: existingWorkflow._id
         })
 
-        console.log('created tool : ',tool);
+        console.log('created tool : ', tool);
         createdTools.push(tool._id)
       } else {
-        console.log('requested aiNodeIdentityNo not found in the createdNodesMap : ',aiNodeIdentityNo);
-        console.log('createdNodesMap : ',createdNodesMap);   
+        console.log('requested aiNodeIdentityNo not found in the createdNodesMap : ', aiNodeIdentityNo);
+        console.log('createdNodesMap : ', createdNodesMap);
       }
     }
 
-    const createdLLMS=[]
-    for(let i=0;i<requestedLLMS.length;i++){
-      const {model,aiNodeIdentityNo}=requestedLLMS[i]
-      if(!model){
+    const createdLLMS = []
+    for (let i = 0; i < requestedLLMS.length; i++) {
+      const { model, aiNodeIdentityNo } = requestedLLMS[i]
+      if (!model) {
         return res.status(400).json(
-          new ApiResponse(false,`Model name not received for the llm created`)
+          new ApiResponse(false, `Model name not received for the llm created`)
         )
-      } else if(!aiNodeIdentityNo){
+      } else if (!aiNodeIdentityNo) {
         return res.status(400).json(
-          new ApiResponse(false,`Requested llm is not attached with any AI Node`)
+          new ApiResponse(false, `Requested llm is not attached with any AI Node`)
         )
       }
 
-      if(!createdNodesMap.has(aiNodeIdentityNo)){
+      if (!createdNodesMap.has(aiNodeIdentityNo)) {
         return res.status(404).json(
-          new ApiResponse(false,`aiNode with given aiNodeIdentityNo not found`)
+          new ApiResponse(false, `aiNode with given aiNodeIdentityNo not found`)
         )
       }
-      const aiNodeObj=createdNodesMap.get(aiNodeIdentityNo)
+      const aiNodeObj = createdNodesMap.get(aiNodeIdentityNo)
 
-      const llm=await LLM.create({
+      const llm = await LLM.create({
         model,
-        owner:userId,
-        workflowId:existingWorkflow._id,
-        aiNodeId:aiNodeObj._id
+        owner: userId,
+        workflowId: existingWorkflow._id,
+        aiNodeId: aiNodeObj._id
       })
       createdLLMS.push(llm._id)
     }
@@ -398,8 +404,8 @@ export async function updateWorkflow(req: Request, res: Response) {
     existingWorkflow.trigger = triggerId
     existingWorkflow.nodes = nodes;
     existingWorkflow.active = true
-    existingWorkflow.tools=createdTools
-    existingWorkflow.llms=createdLLMS
+    existingWorkflow.tools = createdTools
+    existingWorkflow.llms = createdLLMS
 
     await existingWorkflow.save()
 

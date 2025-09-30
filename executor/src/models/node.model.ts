@@ -58,6 +58,10 @@ const nodeSchema=new Schema({
     type:ObjectId,
     ref:"Credential",
     default:null
+  },
+  allPrerequisitesSuccessNeeded:{
+    type:Boolean,
+    default:true
   }
 },{
   timestamps:true

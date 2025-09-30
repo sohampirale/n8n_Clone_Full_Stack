@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import type { IstartExecutionObject } from "../interfaces";
 import { Node, NodeAction, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
+import {Resend} from "resend"
 
 export default class Executor {
     workflowInstanceId: mongoose.Types.ObjectId;
@@ -11,11 +12,11 @@ export default class Executor {
     workflowId: mongoose.Types.ObjectId;
     owner: mongoose.Types.ObjectId;
 
-    triggerInstance:any;
+    triggerInstance: any;
 
-    constructor(startExecutionObject:IstartExecutionObject) {
-        console.log('startExecutionObject : ',startExecutionObject);
-        
+    constructor(startExecutionObject: IstartExecutionObject) {
+        console.log('startExecutionObject : ', startExecutionObject);
+
         let {
             workflowInstanceId,
             triggerInstanceId,
@@ -25,21 +26,21 @@ export default class Executor {
             owner
         } = startExecutionObject
 
-        this.workflowInstanceId=new mongoose.Types.ObjectId(workflowInstanceId)
-        this.triggerInstanceId=new mongoose.Types.ObjectId(triggerInstanceId)
-        this.triggerActionId=new mongoose.Types.ObjectId(triggerActionId)
-        this.triggerId=new mongoose.Types.ObjectId(triggerId)
-        this.workflowId=new mongoose.Types.ObjectId(workflowId)
-        this.owner=new mongoose.Types.ObjectId(owner)
+        this.workflowInstanceId = new mongoose.Types.ObjectId(workflowInstanceId)
+        this.triggerInstanceId = new mongoose.Types.ObjectId(triggerInstanceId)
+        this.triggerActionId = new mongoose.Types.ObjectId(triggerActionId)
+        this.triggerId = new mongoose.Types.ObjectId(triggerId)
+        this.workflowId = new mongoose.Types.ObjectId(workflowId)
+        this.owner = new mongoose.Types.ObjectId(owner)
 
-        console.log('workflowInstanceId : ',workflowInstanceId);
-        console.log('triggerInstanceId : ',triggerInstanceId);
-        console.log('triggerActionId : ',triggerActionId);
-        console.log('workflowId : ',workflowId);
-        console.log('triggerId : ',triggerId);
-        console.log('owner : ',owner);
-        
-        if(!workflowInstanceId || !triggerActionId || ! triggerActionId || ! triggerId || !workflowId || !owner){
+        console.log('workflowInstanceId : ', workflowInstanceId);
+        console.log('triggerInstanceId : ', triggerInstanceId);
+        console.log('triggerActionId : ', triggerActionId);
+        console.log('workflowId : ', workflowId);
+        console.log('triggerId : ', triggerId);
+        console.log('owner : ', owner);
+
+        if (!workflowInstanceId || !triggerActionId || !triggerActionId || !triggerId || !workflowId || !owner) {
             console.log('Insufficient data provided for executor');
             throw new Error()
         }
@@ -51,62 +52,60 @@ export default class Executor {
      * 2.fetch nodeAction of each node that is found to be next to execute
      * 3.iterate through all nodeactions check there .name and call appropriate executor for it do - do this in try catch and dont await
      */
-    async startExecution(){
+    async startExecution() {
         try {
 
-            // const allSolelyDependentNodes=await Node.find({
-            //     workflowId:this.workflowId
-            // })
-
             const allSolelyDependentNodes = await Node.aggregate([{
-                $match:{
-                    workflowId:this.workflowId,
-                    prerequisiteNodes:[]
+                $match: {
+                    workflowId: this.workflowId,
+                    prerequisiteNodes: []
                 }
-            },{
-                $lookup:{
-                    from:"nodeactions",
-                    foreignField:'_id',
-                    localField:"nodeActionId",
-                    as:"nodeAction"
+            }, {
+                $lookup: {
+                    from: "nodeactions",
+                    foreignField: '_id',
+                    localField: "nodeActionId",
+                    as: "nodeAction"
                 }
-            },{
-                $unwind:{
-                    path:"$nodeAction"
+            }, {
+                $unwind: {
+                    path: "$nodeAction"
                 }
             }])
 
-            console.log('allSolelyDependentNodes : ',allSolelyDependentNodes);
-            for(let i=0;i<allSolelyDependentNodes.length;i++){
-                const nodeActionName = allSolelyDependentNodes[i].nodeAction.name
-                if(nodeActionName=='action:telegram_send_message'){
-                    console.log('node instance to be started is : action:telegram_send_message');
-                    const inData=this.inDataProducer(allSolelyDependentNodes[i]._id)
-                    console.log('inData received : ',inData);
+            console.log('allSolelyDependentNodes : ', allSolelyDependentNodes);
 
-                } else if(nodeActionName=='action:gmail_send_email'){
+            for (let i = 0; i < allSolelyDependentNodes.length; i++) {
+                const nodeActionName = allSolelyDependentNodes[i].nodeAction.name
+                console.log('nodeActionName : ', nodeActionName);
+
+                if (nodeActionName == 'telegram_send_message') {
+                    console.log('node instance to be started is : action:telegram_send_message');
+                    const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
+                    console.log('inData received : ', inData);
+
+                } else if (nodeActionName == 'gmail_send_email') {
                     console.log('node instance to be started is : action:gmail_send_email');
-                    
-                    const inData = this.inDataProducer(allSolelyDependentNodes[i]._id)
-                    console.log('inData received : ',inData);
-                    
-                } 
+
+                    const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
+                    console.log('inData received : ', inData);
+                    this.gmail_send_email(allSolelyDependentNodes[i]._id,inData);
+                }
             }
 
-            return true
+            return true;
         } catch (error) {
-            console.log('ERROR : startExecution : ',error);
+            console.log('ERROR : startExecution : ', error);
             return true
         }
     }
 
-    
-    async telegram_send_message(nodeId:string){
-        const bot_api="8287220121:AAHPZ6uFAJB_vUsTW1AukNYFHHkrV_uUBAA"
+    async telegram_send_message(nodeId: string) {
+        const bot_api = "8287220121:AAHPZ6uFAJB_vUsTW1AukNYFHHkrV_uUBAA"
         try {
             // const chatId = `${}`
         } catch (error) {
-            
+
         }
     }
 
@@ -120,11 +119,11 @@ export default class Executor {
      * 7.return the inData
      */
 
-    async inDataProducer(nodeIdStr:string){
+    async inDataProducer(nodeIdStr: string) {
         const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
 
         try {
-            if(!nodeId)return {}
+            if (!nodeId) return {}
 
             // let node = await Node.aggregate([{
             //     $match:{
@@ -159,59 +158,207 @@ export default class Executor {
             //simple way
 
             const node = await Node.findOne({
-                _id:nodeId
+                _id: nodeId
             })
 
-            if(!node)return {}
+            if (!node) return {}
 
             const triggerId = node.triggerId
-            const prerequisiteNodesIds=node.prerequisiteNodes;
+            const prerequisiteNodesIds = node.prerequisiteNodes;
 
-            let triggerInstance,preqrequisiteNodesInstances=[];
-            const inData={}
-            
+            let triggerInstance, preqrequisiteNodesInstances = [];
+            const inData = {}
 
-            if(triggerId){
-                triggerInstance=await TriggerInstance.findOne({
-                    _id:this.triggerInstanceId
+
+            if (triggerId) {
+                triggerInstance = await TriggerInstance.findOne({
+                    _id: this.triggerInstanceId
                 })
             }
 
-            if(prerequisiteNodesIds && prerequisiteNodesIds.length!=0){
-                preqrequisiteNodesInstances=await NodeInstance.find({
-                    workflowInstanceId:this.workflowInstanceId,
-                    nodeId:{
-                        $in:prerequisiteNodesIds
+            if (prerequisiteNodesIds && prerequisiteNodesIds.length != 0) {
+                preqrequisiteNodesInstances = await NodeInstance.find({
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: {
+                        $in: prerequisiteNodesIds
                     }
                 })
             }
 
-            if(triggerInstance){
-                Object.assign(inData,triggerInstance.outData)
+            if (triggerInstance) {
+                Object.assign(inData, triggerInstance.outData)
             }
 
-            for(let i=0;i<preqrequisiteNodesInstances.length;i++){
-                Object.assign(inData,preqrequisiteNodesInstances[i]?.outData)
+            for (let i = 0; i < preqrequisiteNodesInstances.length; i++) {
+                Object.assign(inData, preqrequisiteNodesInstances[i]?.outData)
             }
 
-            inData.success=true
+            inData.success = true
 
             return inData;
 
         } catch (error) {
-            console.log('ERROR : inDataProducer : ',error);
+            console.log('ERROR : inDataProducer : ', error);
             return {
-                success:false
+                success: false
             }
         }
     }
 
-    async gmail_send_email(){
+    //send email to someone
+    /**
+     * 1.fetch the node with given nodeId
+     * 2.retrive to,from,html from the node.data 
+     * 3.use mustache to place any value in those 3 (to,from,html) using inData object
+     * 4.fetch the credential of the user that has resend 
+     * 4.call resend function to send email
+     * 5.call the handle_next_node_execution
+     */
+    async gmail_send_email(nodeIdStr: string, inData: any) {
         //creating the inData object with the help of all the prerequisiteNodes and maybe triggerId node that node 
+        console.log('inside gmail_send_email');
+        
         try {
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            let node = await Node.aggregate([
+                {
+                    $match: {
+                        _id: nodeId
+                    }
+                }, {
+                    $lookup: {
+                        from: "credentials",
+                        foreignField: "_id",
+                        localField: "credentialId",
+                        as: "credential"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$credential",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }
+            ])
+
+            if (!node || node.length == 0) {
+                console.log('Cannot find node with given nodeId');
+                return;
+            }
+
+            node = node[0]
+
+            const { to, from, subject,html } = node.data
+            if (!to || !from ||!subject || !html) {
+                console.log('Received gmail_send_email node has insufficient data');
+                return;
+            } 
+            // else if (!node.credentialId) {
+            //     console.log('gmail_send_email has no attached credential with it,attach RESEND credential');
+            //     return;
+            // } else if (!node.credential) {
+            //     console.log('Credential not found with given credentialId of this node');
+            //     return;
+            // }
+
+            // const RESEND_API_KEY = node.credential?.data.RESEND_API_KEY
+
+            //:TODO uncomment the upper credential logic and remove the line below when working with frontend user data
+
+            const RESEND_API_KEY = process.env.RESEND_API_KEY
+
+            if (!RESEND_API_KEY) {
+                console.log('RESEND_API_KEY not found for used credential');
+                return;
+            }
+
+            const email_response = await this.helper_resend_send_email(RESEND_API_KEY,to,from,subject,html)
+
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId:this.workflowInstanceId,
+                nodeId,
+                workflowId:this.workflowId,
+                inData,
+                outData:{
+                    ...email_response
+                },
+                executeSuccess:true
+            })
+
+
+            this.handleNextDependingNodeExecution(nodeId)
             
+
         } catch (error) {
+            console.log('ERROR :: gmail_send_email ',error);
             
+        }
+    }
+
+    //call the next nodes that depend on ths node with _id:nodeId and all of there other preqrequisiteNodes have instances of this workflow
+    /**
+     * 1.fetch all the nodes of that workflowId who have this nodeId in the preqrequisiteNodes array
+     * 2.for all fetched nodes from db check if all the nodeId they have in prerequisiteNodes do they have instance of it with that workflowInstanceId
+     * if those nodes dont have instance then we cant trigger this node action yet
+     * 3.if now the node.allPrerequisitesSuccessNeeded is true then we need to also retrive all the instances from the prerequisiteNodesIds and then check if they are a success or not - if any one of it is false then continue
+     * 4.if allPrerequisitesSuccessNeeded if false then call the handler of that node action
+     */
+   
+    async handleNextDependingNodeExecution(nodeIdStr:string){
+        try {
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+
+            const allDependingNodes = await Node.find({
+                workflowId:this.workflowId,
+                prerequisiteNodes:nodeId
+            })
+
+            console.log('allDependingNodes : ',allDependingNodes);
+            for(let i=0;i<allDependingNodes.length;i++){
+                const preqrequisiteNodesIds=allDependingNodes[i].prerequisiteNodes
+
+                const totalInstancesOfPreceedingNodes = await NodeInstance.countDocuments({
+                    workflowInstanceId:this.workflowInstanceId,
+                    nodeId:{
+                        $in:preqrequisiteNodesIds
+                    }
+                })
+
+                console.log('totalInstancesOfPreceedingNodes : ',totalInstancesOfPreceedingNodes);
+                
+                if(totalInstancesOfPreceedingNodes !=preqrequisiteNodesIds.length){
+                    console.log('all prerequisites are noty yet fullfilled');
+                    return;
+                } else {
+                    console.log('all prerequisites fullfilled');
+                    const allPrerequisiteInstances = await NodeInstance.find({
+                        workflowInstanceId:this.workflowInstanceId,
+                        nodeId:{
+                            $in:preqrequisiteNodesIds
+                        }
+                    })
+                }
+            }
+        } catch (error) {
+            console.log('ERROR :: handleNextDependingNodeExecution : ',error);
+        }
+    }
+
+    async helper_resend_send_email(RESEND_API_KEY: string, to: string, from: string,subject:string, html: string) {
+        try {
+            const resend = new Resend(RESEND_API_KEY);
+
+            const response = await resend.emails.send({
+                from,
+                to,
+                subject,
+                html,
+            });
+
+            console.log("Email sent successfully:", response);
+            return response;
+        } catch (error) {
+            console.error("ERROR :: helper_resend_send_email:", error);
+            throw error;
         }
     }
 }
