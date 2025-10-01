@@ -91,6 +91,14 @@ const nodeInstanceSchema= new Schema({
   error:{
     type:Schema.Types.Mixed,
     default:{}
+  },
+  waiting:{
+    type:Boolean,
+    default:null
+  },
+  waitingIdentifier:{
+    type:String,
+    default:null
   }
 },{
   timestamps:true

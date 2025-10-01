@@ -118,6 +118,7 @@ export default class Executor {
      */
 
     async telegram_send_message(nodeIdStr: string, inData: any) {
+        console.log('inside telegram_send_message');
 
         try {
 
@@ -183,7 +184,7 @@ export default class Executor {
 
             if (!node.nodeAction) {
                 throw new Error('Node action not found for the requested node')
-            } else if (!node.nodeAction.name == 'telegram_send_message') {
+            } else if (node.nodeAction.name != 'telegram_send_message') {
                 throw new Error('Node action of the requested node is not telegram_send_message')
             } else if (!node.nodeAction.publicallyAvailaible) {
                 throw new Error('Telegram_send_message node is currently not availaible')
@@ -212,7 +213,7 @@ export default class Executor {
 
             // let {chat_id,text}=node.data
             //:TODO uncomment line above and remove line below
-            let chat_id = '940083925', text = 'Hey there this is message sent by telegram_send_message node from n8n_clone'
+            let chat_id = '940083925', text = 'Hello sir, this message is sent by n8n_clone using telegram_send_message node'
 
 
             if (!chat_id || !text) {
@@ -229,12 +230,15 @@ export default class Executor {
                 text,
                 parse_mode: "HTML"
             })
+            console.log('EXECUTED TELEGRAM SEND MESSAGE --------------------------------------');
 
             console.log('Message sent : ', response);
             Object.assign(nodeInstance.outData, response)
             await nodeInstance.save()
             this.handleNextDependingNodeExecution(nodeId)
         } catch (error) {
+            console.log('ERROR :: ', error);
+
             try {
                 const existingNodeInstance = await NodeInstance.findOne({
                     workflowInstanceId: this.workflowInstanceId,
@@ -242,7 +246,7 @@ export default class Executor {
                 })
                 if (existingNodeInstance) {
                     existingNodeInstance.executeSuccess = false
-                    existingNodeInstance.error=error
+                    existingNodeInstance.error = error
                     await existingNodeInstance?.save()
                 }
             } catch (error) {
@@ -514,10 +518,10 @@ export default class Executor {
                         localField: 'nodeActionId',
                         as: "nodeAction"
                     }
-                },{
-                    $unwind:{
-                        path:"$nodeAction",
-                        preserveNullAndEmptyArrays:true
+                }, {
+                    $unwind: {
+                        path: "$nodeAction",
+                        preserveNullAndEmptyArrays: true
                     }
                 }
             ])
@@ -558,6 +562,7 @@ export default class Executor {
                         const nodeAction = await NodeAction.findOne({
                             _id: allDependingNodes[i]?.nodeActionId
                         })
+
                         if (!nodeAction) {
                             console.log('Node action not found of the node');
                             return;
@@ -585,6 +590,77 @@ export default class Executor {
     }
 
     async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId, nodeAction: any) {
+        const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+        let node = await Node.aggregate([
+            {
+                $match:{
+                    _id:nodeId
+                }
+            },{
+                $lookup:{
+                    from:"nodeactions",
+                    foreignField:"_id",
+                    localField:"nodeActionId",
+                    as:"nodeAction"
+                }
+            },{
+                $unwind:{
+                    path:"$nodeAction",
+                    preserveNullAndEmptyArrays:true
+                }
+            },{
+                $lookup:{
+                    from:"credential",
+                    foreignField:"_id",
+                    localField:"credentialId",
+                    as:"credential",
+                    pipeline:[
+                        {
+                            $lookup:{
+                                from:"credentialforms",
+                                foreignField:"_id",
+                                localField:"credentialFormId",
+                                as:'credentialForm'
+                            }
+                        },{
+                            $unwind:{
+                                path:"$credentialForm",
+                                preserveNullAndEmptyArrays:true
+                            }
+                        }
+                    ]
+                }
+            },{
+                $unwind:{
+                    path:"$credential",
+                    preserveNullAndEmptyArrays:true
+                }
+            },
+        ])
+
+        if(!node || node.length==0){
+            console.log('node not found with given nodeIdStr inside callRespectiveHandler,returning...');
+            return;
+        } 
+        node=node[0]
+
+        if(!node.nodeAction){
+            console.log('nodeAction not found for the nodeId given in callRespectiveHandler,returning...');
+            return;
+        }
+
+        const nodeActionName = node.nodeAction?.name
+
+        if(nodeActionName=='gmail_send_email'){
+            //checks of gmail_send_email
+            const inData=await this.inDataProducer(nodeIdStr)
+            this.gmail_send_email(node,data)
+        } else if(nodeActionName=='telegram_send_email'){
+            const inData=await this.inDataProducer(nodeIdStr)
+            this.telegram_send_message(node,inData)
+        }
+
+        return;
         try {
             if (!nodeAction) {
                 console.log('nodeAction not received of that node');
@@ -622,6 +698,19 @@ export default class Executor {
         } catch (error) {
             console.error("ERROR :: helper_resend_send_email:", error);
             throw error;
+        }
+    }
+
+    /** Working of aiNode
+     * 1.
+     * 
+     * 
+     */
+    async aiNode(nodeIdStr:string|mongoose.Types.ObjectId,inData){
+        try {
+            
+        } catch (error) {
+            
         }
     }
 }

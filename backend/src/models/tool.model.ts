@@ -1,4 +1,4 @@
-import mongoose,{Schema} from "mongoose"
+import mongoose,{mongo, Schema} from "mongoose"
 const ObjectId=Schema.Types.ObjectId;
 
 const toolFormSchema=new Schema({
@@ -77,5 +77,48 @@ const toolSchema=new Schema({
   timestamps:true
 })
 
+const toolInstanceSchema = new Schema({
+  workflowInstanceId:{
+    type:ObjectId,
+    ref:"WorkflowInstance",
+    required:true
+  },
+  toolId:{
+    type:ObjectId,
+    ref:"Tool",
+    required:true
+  },
+  workflowId:{
+    type:ObjectId,
+    ref:"Workflow",
+    required:true
+  },
+  inData:{
+    type:Schema.Types.Mixed,
+    default:{}
+  },
+  outData:{
+    type:Schema.Types.Mixed,
+    default:{}
+  },
+  executeSuccess:{
+    type:Boolean,
+    default:true
+  },
+  error:{
+    type:Schema.Types.Mixed,
+    default:{}
+  },
+  waiting:{
+    type:Boolean,
+    default:false
+  },
+  waitingIdentifier:{
+    type:String,
+    default:null
+  }
+})
+
 export const ToolForm = mongoose.model("ToolForm",toolFormSchema)
 export const Tool = mongoose.model("Tool",toolSchema)
+export const ToolInstance = mongoose.model("ToolInstance",toolInstanceSchema);
