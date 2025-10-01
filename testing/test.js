@@ -48,7 +48,7 @@ const availableTools = {
 
 
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyCtU3dZySRYqKRVPxzq9eyS8naHKhh3Lqc" });
+const ai = new GoogleGenAI({ apiKey: "" });
 // const model = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
 
 

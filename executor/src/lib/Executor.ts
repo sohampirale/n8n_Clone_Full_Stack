@@ -1,10 +1,23 @@
-import mongoose, { isObjectIdOrHexString } from "mongoose";
+import mongoose, { isObjectIdOrHexString, mongo } from "mongoose";
 import type { IstartExecutionObject } from "../interfaces";
 import { Node, NodeAction, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
 import { Resend } from "resend"
 import Mustache from "mustache"
 import axios from "axios"
+import { reduceEachTrailingCommentRange } from "typescript";
+import { LLM } from "../models/llm.model";
+import { Tool } from "../models/tool.model";
+
+// import { tool } from "@langchain/core/tools";
+// import { z } from "zod";
+// import { createReactAgentExecutor } from "@langchain/langgraph";
+// import { ChatGoogleGenerativeAI } from "@langchain/google-genai"; 
+
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
+import { DynamicTool } from "@langchain/core/tools";
+import { toolFunctionMap } from "../helpers/tools";
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -182,23 +195,7 @@ export default class Executor {
                 error: {}
             })
 
-            if (!node.nodeAction) {
-                throw new Error('Node action not found for the requested node')
-            } else if (node.nodeAction.name != 'telegram_send_message') {
-                throw new Error('Node action of the requested node is not telegram_send_message')
-            } else if (!node.nodeAction.publicallyAvailaible) {
-                throw new Error('Telegram_send_message node is currently not availaible')
-            }
-            // else if (!node.credential) {
-            //     console.log('Credential not attached for the telegram_send_message node');
-            //     throw new Error()
-            // } else if (!node.credential.credentialForm) {
-            //     console.log('CredentialForm not foud for the credential attached to telegram_send_message');
-            //     throw new Error()
-            // } else if (node.credential.credentialForm.name != 'telegram') {
-            //     console.log('Credential Form of the attached credential is not telegram credential');
-            //     throw new Error()
-            // }
+
 
 
 
@@ -361,61 +358,11 @@ export default class Executor {
      * 4.call resend function to send email
      * 5.call the handle_next_node_execution
      */
-    async gmail_send_email(nodeIdStr: string, inData: any) {
-        //creating the inData object with the help of all the prerequisiteNodes and maybe triggerId node that node 
+    async gmail_send_email(node: any, inData: any) {
         console.log('inside gmail_send_email');
 
         try {
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
-            let node = await Node.aggregate([
-                {
-                    $match: {
-                        _id: nodeId
-                    }
-                }, {
-                    $lookup: {
-                        from: "nodeactions",
-                        foreignField: "_id",
-                        localField: "nodeActionId",
-                        as: "nodeAction"
-                    }
-                }, {
-                    $unwind: {
-                        path: "$nodeAction",
-                        preserveNullAndEmptyArrays: true
-                    }
-                }, {
-                    $lookup: {
-                        from: "credentials",
-                        foreignField: "_id",
-                        localField: "credentialId",
-                        as: "credential",
-                        pipeline: [{
-                            $lookup: {
-                                from: "credentialforms",
-                                foreignField: "_id",
-                                localField: "credentialFormId",
-                                as: "credentialForm"
-                            }
-                        }, {
-                            $unwind: {
-                                path: "$credentialForm",
-                                preserveNullAndEmptyArrays: true
-                            }
-                        }]
-                    }
-                }, {
-                    $unwind: {
-                        path: "$credential",
-                        preserveNullAndEmptyArrays: true
-                    }
-                }
-            ])
-
-            if (!node || node.length == 0) {
-                console.log('Cannot find node with given nodeId');
-                return;
-            }
+            const nodeId = node._id
 
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
@@ -425,27 +372,6 @@ export default class Executor {
                 outData: {},
                 executeSuccess: true
             })
-
-            node = node[0]
-            if (!node.nodeAction) {
-                throw new Error('Node action not found for the requested node')
-            } else if (!node.nodeAction.name == 'gmail_send_email') {
-                console.log('Node action of the requested node is not gmail_send_email');
-                throw new Error()
-            } else if (!node.nodeAction.publicallyAvailaible) {
-                console.log('gmail_send_email node is currently not availaible');
-                throw new Error()
-            }
-            // else if (!node.credential) {
-            //     console.log('Credential not attached for the gmail_send_email node');
-            //     throw new Error()
-            // } else if (!node.credential.credentialForm) {
-            //     console.log('CredentialForm not found for the credential attached to gmail_send_email');
-            //     throw new Error()
-            // } else if (node.credential.credentialForm.name != 'gmail') {
-            //     console.log('Credential Form of the attached credential of gmail_send_email node is not gmail credential');
-            //     throw new Error()
-            // }
 
             // let { to, from, subject, html } = node.data
             //:TODO uncommment line above and remove lines below
@@ -475,8 +401,6 @@ export default class Executor {
                 console.log('RESEND_API_KEY not found for used credential');
                 return;
             }
-
-
 
             const email_response = await this.helper_resend_send_email(RESEND_API_KEY, to, from, subject, html)
 
@@ -559,28 +483,11 @@ export default class Executor {
                             return;
                         }
 
-                        const nodeAction = await NodeAction.findOne({
-                            _id: allDependingNodes[i]?.nodeActionId
-                        })
-
-                        if (!nodeAction) {
-                            console.log('Node action not found of the node');
-                            return;
-                        }
-
-                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+                        this.callRespectiveHandler(allDependingNodes[i]?._id)
 
                     } else {
-                        const nodeAction = await NodeAction.findOne({
-                            _id: allDependingNodes[i]?.nodeActionId
-                        })
 
-                        if (!nodeAction) {
-                            console.log('Node action not found of the node');
-                            return;
-                        }
-
-                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+                        this.callRespectiveHandler(allDependingNodes[i]?._id)
                     }
                 }
             }
@@ -589,96 +496,221 @@ export default class Executor {
         }
     }
 
-    async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId, nodeAction: any) {
-        const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
-        let node = await Node.aggregate([
-            {
-                $match:{
-                    _id:nodeId
-                }
-            },{
-                $lookup:{
-                    from:"nodeactions",
-                    foreignField:"_id",
-                    localField:"nodeActionId",
-                    as:"nodeAction"
-                }
-            },{
-                $unwind:{
-                    path:"$nodeAction",
-                    preserveNullAndEmptyArrays:true
-                }
-            },{
-                $lookup:{
-                    from:"credential",
-                    foreignField:"_id",
-                    localField:"credentialId",
-                    as:"credential",
-                    pipeline:[
-                        {
-                            $lookup:{
-                                from:"credentialforms",
-                                foreignField:"_id",
-                                localField:"credentialFormId",
-                                as:'credentialForm'
-                            }
-                        },{
-                            $unwind:{
-                                path:"$credentialForm",
-                                preserveNullAndEmptyArrays:true
-                            }
-                        }
-                    ]
-                }
-            },{
-                $unwind:{
-                    path:"$credential",
-                    preserveNullAndEmptyArrays:true
-                }
-            },
-        ])
-
-        if(!node || node.length==0){
-            console.log('node not found with given nodeIdStr inside callRespectiveHandler,returning...');
-            return;
-        } 
-        node=node[0]
-
-        if(!node.nodeAction){
-            console.log('nodeAction not found for the nodeId given in callRespectiveHandler,returning...');
-            return;
-        }
-
-        const nodeActionName = node.nodeAction?.name
-
-        if(nodeActionName=='gmail_send_email'){
-            //checks of gmail_send_email
-            const inData=await this.inDataProducer(nodeIdStr)
-            this.gmail_send_email(node,data)
-        } else if(nodeActionName=='telegram_send_email'){
-            const inData=await this.inDataProducer(nodeIdStr)
-            this.telegram_send_message(node,inData)
-        }
-
-        return;
+    async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId) {
+        let inData;
         try {
-            if (!nodeAction) {
-                console.log('nodeAction not received of that node');
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            let node = await Node.aggregate([
+                {
+                    $match: {
+                        _id: nodeId
+                    }
+                }, {
+                    $lookup: {
+                        from: "nodeactions",
+                        foreignField: "_id",
+                        localField: "nodeActionId",
+                        as: "nodeAction"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$nodeAction",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }, {
+                    $lookup: {
+                        from: "credential",
+                        foreignField: "_id",
+                        localField: "credentialId",
+                        as: "credential",
+                        pipeline: [
+                            {
+                                $lookup: {
+                                    from: "credentialforms",
+                                    foreignField: "_id",
+                                    localField: "credentialFormId",
+                                    as: 'credentialForm'
+                                }
+                            }, {
+                                $unwind: {
+                                    path: "$credentialForm",
+                                    preserveNullAndEmptyArrays: true
+                                }
+                            }
+                        ]
+                    }
+                }, {
+                    $unwind: {
+                        path: "$credential",
+                        preserveNullAndEmptyArrays: true
+                    }
+                },
+            ])
+
+            if (!node || node.length == 0) {
+                console.log('node not found with given nodeIdStr inside callRespectiveHandler,returning...');
                 return;
             }
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
-            const nodeActionName = nodeAction.name
-            if (nodeActionName == 'gmail_send_email') {
-                const inData = await this.inDataProducer(nodeId);
-                console.log('inData received is : ', inData);
-                this.gmail_send_email(nodeId, inData)
-            } else if (nodeActionName == 'telegram_send_message') {
-                const inData = await this.inDataProducer(nodeId)
-                this.telegram_send_message(nodeId, inData)
-            }
-        } catch (error) {
-            console.log('ERROR :: callRespectiveHandler : ', error);
+            node = node[0]
 
+            if (!node.nodeAction) {
+                console.log('nodeAction not found for the nodeId given in callRespectiveHandler,returning...');
+                return;
+            }
+
+            const nodeActionName = node.nodeAction?.name
+            inData = await this.inDataProducer(nodeId)
+
+            //:TODO uncomment few checks in each handler selection that are commented out until frontend is made
+
+            if (nodeActionName == 'gmail_send_email') {
+                //checks of gmail_send_email
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('gmail_send_email node is currently not availaible');
+                }
+                // else if (!node.credential) {
+                //     console.log('Credential not attached for the gmail_send_email node');
+                //     throw new Error()
+                // } else if (!node.credential.credentialForm) {
+                //     console.log('CredentialForm not found for the credential attached to gmail_send_email');
+                //     throw new Error()
+                // } else if (node.credential.credentialForm.name != 'gmail') {
+                //     console.log('Credential Form of the attached credential of gmail_send_email node is not gmail credential');
+                //     throw new Error()
+                // }
+
+                //:TODO(optional maybe) can also check for the {to,from,html,subject} are given in the node.data here
+                this.gmail_send_email(node, inData)
+            } else if (nodeActionName == 'telegram_send_message') {
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('Telegram_send_message node is currently not availaible')
+                }
+                // else if (!node.credential) {
+                //     console.log('Credential not attached for the telegram_send_message node');
+                //     throw new Error()
+                // } else if (!node.credential.credentialForm) {
+                //     console.log('CredentialForm not foud for the credential attached to telegram_send_message');
+                //     throw new Error()
+                // } else if (node.credential.credentialForm.name != 'telegram') {
+                //     console.log('Credential Form of the attached credential is not telegram credential');
+                //     throw new Error()
+                // }
+
+                this.telegram_send_message(node, inData)
+            } else if (nodeActionName == 'aiNode') {
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('aiNode action currently unavailaible');
+
+                } else if (!node.data?.userQuery) {
+                    throw new Error('userQuery not found for the aiNode created');
+                }
+
+                let attachedLLM = await LLM.aggregate([
+                    {
+                        $match: {
+                            workflowId: this.workflowId,
+                            aiNodeId: node._id
+                        }
+                    }, {
+                        $lookup: {
+                            from: "credentials",
+                            foreignField: "_id",
+                            localField: "credentialId",
+                            as: "credential",
+                            pipeline: [
+                                {
+                                    $lookup: {
+                                        from: "credentialforms",
+                                        foreignField: "_id",
+                                        localField: "credentialFormId",
+                                        as: "credentialForm"
+                                    }
+                                }, {
+                                    $unwind: {
+                                        path: "$credentialForm",
+                                        preserveNullAndEmptyArrays: true
+                                    }
+                                }
+                            ]
+                        }
+                    }, {
+                        $unwind: {
+                            path: "$credential",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    }
+                ])
+
+                if (!attachedLLM || attachedLLM.length == 0) {
+                    throw new Error('No attached llm foud for the AI Node');
+
+                }
+
+                attachedLLM = attachedLLM[0]
+
+                if (!attachedLLM.credential) {
+                    throw new Error('No credential found for the attached llm');
+
+                } else if (!attachedLLM.credential.credentialForm) {
+                    throw new Error('No credential form found for the attached credential to llm');
+
+                } else if (attachedLLM.credential.credentialForm.type != 'llm') {
+                    throw new Error('Credential attached to the LLM is not of LLM type,incorrect credential chosen');
+
+                }
+
+                node.llm = attachedLLM;
+                //Leaving the check of API_KEY or whatever requiredField that is needed for the credentialForm to be checked at aiNodeHandler
+
+                const attachedTools = await Tool.aggregate([{
+                    $match: {
+                        workflowId: this.workflowId,
+                        aiNodeId: node._id
+                    }
+                }, {
+                    $lookup: {
+                        from: "toolforms",
+                        foreignField: "_id",
+                        localField: "toolFormId",
+                        as: "toolForm"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$toolForm",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }
+                ])
+
+                if (!attachedTools || attachedTools.length == 0) {
+                    console.log('No attached tools found for aiNode, allowing it for this moment');
+                }
+
+                //in this we can iterate through each attachedTool.toolForm and it does not exist - throw requested tool does not have toolForm associated with it 
+                node.tools = attachedTools
+                this.aiNode(node, inData)
+                return;
+            } else {
+                console.log('node valid nodeActionName found : ', nodeActionName);
+            }
+
+            return;
+        } catch (error) {
+            try {
+                const nodeInstance = await NodeInstance.create({
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: new mongoose.Types.ObjectId(nodeIdStr),
+                    workflowId: this.workflowId,
+                    inData: inData ?? {},
+                    outData: {},
+                    executeSuccess: false,
+                    error: {}
+                })
+
+            } catch (error) {
+
+            }
+            this.handleNextDependingNodeExecution(nodeIdStr)
         }
     }
 
@@ -702,15 +734,73 @@ export default class Executor {
     }
 
     /** Working of aiNode
-     * 1.
-     * 
-     * 
+     * since all checks are done we can just work with the node 90%
+     * 1.retrive {userQuery} from node.data and render it using Mustache using inData
+     * 2.find api key node.credential.credentialForm.name and based on the llm user has selected retrive the API_KEY 
+     * 3.if api key not foud - throw api key not found for the attached credential
+     * 4.create the required llm using the api key
+     * Creating tools 
+     * 5.iterate through all node.tools and based on tools[i].toolForm.name fetch the funciton from toolFunctionMap 
+     *  if function not found from toolFunctionMap fetch it from user defined tools - future feature not yet created
+     * 6.create the tool from each retrive function from toolFunctionMap that will be used to give to llm
+     * 7.await invoke the LLM
+     * 8.create the instance with outData and inData as well
      */
-    async aiNode(nodeIdStr:string|mongoose.Types.ObjectId,inData){
+
+    async aiNode(node: any, inData: any) {
+        console.log('inside aiNode handler');
+        
         try {
-            
+            const credentialFormName = node.credential?.credentialForm?.name
+            let llm;
+
+            llm = new ChatGoogleGenerativeAI({
+                modelName: "gemini-1.5-flash", 
+                apiKey: process.env.GOOGLE_API_KEY,
+                temperature: 0.7
+            });
+
+            const fetch_weatherFn=toolFunctionMap.get("fetch_weather")
+            const serpAPIFn=toolFunctionMap.get("serpAPI")
+
+            const fetch_weather=new DynamicTool({
+                name:'fetch_weather',
+                description:"this tool fetched live weather of a city with its cityName",
+                func:fetch_weatherFn
+            })
+
+            const serpAPI=new DynamicTool({
+                name:'serpAPI',
+                description:"this tool using serpAPI to search content on google and retrive data",
+                func:serpAPIFn
+            })
+
+
+            const llmWithTools = llm.bindTools([fetch_weather,serpAPI]);
+
+            const userQuery=`You are a helpful assistant. Use tools if needed to answer the question.
+User question: {question}`
+
+            const prompt= userQuery.replace("{question}",'what is current weather of Mumbai?')
+
+            const response = await llmWithTools.invoke(prompt);
+            console.log("LLM Response:", response.content);
+
+            /*
+            if (credentialFormName == 'gemini') {
+
+            }
+
+            console.log('inside aiNode handler ');
+            console.log('node : ', node);
+            console.log('inData : ', inData);
+            */
+
+            this.handleNextDependingNodeExecution(nodeIdStr)
         } catch (error) {
-            
+            console.log('ERROR : aiNode : ', error);
+
+            this.handleNextDependingNodeExecution(nodeIdStr)
         }
     }
 }
