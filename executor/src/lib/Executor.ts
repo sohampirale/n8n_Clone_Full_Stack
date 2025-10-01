@@ -18,6 +18,7 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
 import { DynamicTool } from "@langchain/core/tools";
 import { toolFunctionMap } from "../helpers/tools";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -497,6 +498,8 @@ export default class Executor {
     }
 
     async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId) {
+        console.log('inside callRespectiveHandler');
+
         let inData;
         try {
             const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
@@ -562,6 +565,7 @@ export default class Executor {
             inData = await this.inDataProducer(nodeId)
 
             //:TODO uncomment few checks in each handler selection that are commented out until frontend is made
+            console.log('nodeActionName : ', nodeActionName);
 
             if (nodeActionName == 'gmail_send_email') {
                 //checks of gmail_send_email
@@ -601,9 +605,11 @@ export default class Executor {
                 if (!node.nodeAction.publicallyAvailaible) {
                     throw new Error('aiNode action currently unavailaible');
 
-                } else if (!node.data?.userQuery) {
-                    throw new Error('userQuery not found for the aiNode created');
                 }
+                // else if (!node.data?.userQuery) {
+                //     throw new Error('userQuery not found for the aiNode created');
+                // }
+                //:TODO uncomment this after completing frontend and simple BE logic 
 
                 let attachedLLM = await LLM.aggregate([
                     {
@@ -648,16 +654,16 @@ export default class Executor {
 
                 attachedLLM = attachedLLM[0]
 
-                if (!attachedLLM.credential) {
-                    throw new Error('No credential found for the attached llm');
+                //:TODO uncomment this after completing frontend and simple BE logic 
+                // if (!attachedLLM.credential) {
+                //     throw new Error('No credential found for the attached llm');
 
-                } else if (!attachedLLM.credential.credentialForm) {
-                    throw new Error('No credential form found for the attached credential to llm');
+                // } else if (!attachedLLM.credential.credentialForm) {
+                //     throw new Error('No credential form found for the attached credential to llm');
 
-                } else if (attachedLLM.credential.credentialForm.type != 'llm') {
-                    throw new Error('Credential attached to the LLM is not of LLM type,incorrect credential chosen');
-
-                }
+                // } else if (attachedLLM.credential.credentialForm.type != 'llm') {
+                //     throw new Error('Credential attached to the LLM is not of LLM type,incorrect credential chosen');
+                // }
 
                 node.llm = attachedLLM;
                 //Leaving the check of API_KEY or whatever requiredField that is needed for the credentialForm to be checked at aiNodeHandler
@@ -696,6 +702,8 @@ export default class Executor {
 
             return;
         } catch (error) {
+            console.log('ERROR : callRespectiveHandler : ', error);
+
             try {
                 const nodeInstance = await NodeInstance.create({
                     workflowInstanceId: this.workflowInstanceId,
@@ -749,42 +757,67 @@ export default class Executor {
 
     async aiNode(node: any, inData: any) {
         console.log('inside aiNode handler');
-        
+
         try {
             const credentialFormName = node.credential?.credentialForm?.name
             let llm;
+            console.log('test1');
 
             llm = new ChatGoogleGenerativeAI({
-                modelName: "gemini-1.5-flash", 
+                model: "gemini-2.0-flash",
                 apiKey: process.env.GOOGLE_API_KEY,
                 temperature: 0.7
             });
+            console.log('test2');
 
-            const fetch_weatherFn=toolFunctionMap.get("fetch_weather")
-            const serpAPIFn=toolFunctionMap.get("serpAPI")
 
-            const fetch_weather=new DynamicTool({
-                name:'fetch_weather',
-                description:"this tool fetched live weather of a city with its cityName",
-                func:fetch_weatherFn
+            const fetch_weatherFn = toolFunctionMap.get("fetch_weather")
+            const serpAPIFn = toolFunctionMap.get("serpAPI")
+
+            console.log('test3');
+
+            const fetch_weather = new DynamicTool({
+                name: 'fetch_weather',
+                description: "this tool fetched live weather of a city with its cityName",
+                func: fetch_weatherFn
             })
 
-            const serpAPI=new DynamicTool({
-                name:'serpAPI',
-                description:"this tool using serpAPI to search content on google and retrive data",
-                func:serpAPIFn
+            console.log('test4');
+
+            const serpAPI = new DynamicTool({
+                name: 'serpAPI',
+                description: "this tool using serpAPI to search content on google and retrive data",
+                func: serpAPIFn
             })
 
+            const tools = [fetch_weather, serpAPI];
 
-            const llmWithTools = llm.bindTools([fetch_weather,serpAPI]);
+            console.log('test5');
 
-            const userQuery=`You are a helpful assistant. Use tools if needed to answer the question.
-User question: {question}`
+            const llmWithTools = llm.bindTools([fetch_weather, serpAPI]);
 
-            const prompt= userQuery.replace("{question}",'what is current weather of Mumbai?')
+            // const userQuery = `what is current weather of Mumbai and chennai?`
+            const userQuery = `search for the query : 100xDevs on the google and return what you get`
+            const systemPrompt = "You are best friend of the user who is very funny and sarcastic and uses tools attached to you";
+            const agent = createReactAgent({
+                llm,
+                tools,
+                messageModifier: systemPrompt,  // Adds system prompt to messages
+            });
 
-            const response = await llmWithTools.invoke(prompt);
-            console.log("LLM Response:", response.content);
+            const result = await agent.invoke({
+                messages: [{ role: "user", content: userQuery }],
+            });
+
+            const finalResponse = result.messages[result.messages.length - 1].content;
+            console.log("Final LLM Response:", finalResponse);
+
+            // // const prompt= userQuery.replace("{question}",'what is current weather of Mumbai?')
+
+            // console.log('test6');
+
+            // const response = await llmWithTools.invoke(prompt);
+            // console.log("LLM Response:", response.content);
 
             /*
             if (credentialFormName == 'gemini') {
@@ -796,11 +829,11 @@ User question: {question}`
             console.log('inData : ', inData);
             */
 
-            this.handleNextDependingNodeExecution(nodeIdStr)
+            this.handleNextDependingNodeExecution(node._id)
         } catch (error) {
             console.log('ERROR : aiNode : ', error);
 
-            this.handleNextDependingNodeExecution(nodeIdStr)
+            this.handleNextDependingNodeExecution(node._id)
         }
     }
 }
