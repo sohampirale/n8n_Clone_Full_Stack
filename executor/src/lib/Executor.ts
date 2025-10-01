@@ -770,38 +770,36 @@ export default class Executor {
             });
             console.log('test2');
 
+            const agentTools:any = [];
 
-            const fetch_weatherFn = toolFunctionMap.get("fetch_weather")
-            const serpAPIFn = toolFunctionMap.get("serpAPI")
+            const tools = node.tools;
+            for(let i=0;i<tools.length;i++){
+                const toolFormName = tools[i]?.toolForm?.name
+                console.log('toolFormName : ',toolFormName);
+                
+                const toolFn = toolFunctionMap.get(toolFormName)
+                if(toolFn){
+                    console.log('description : ',tools[i].toolForm.description);
+                    
+                    const tool = new DynamicTool({
+                        name: toolFormName,
+                        description: tools[i]?.toolForm?.description,
+                        func: toolFn
+                    })
+                    agentTools.push(tool)
+                }
+            }
+            // const systemPrompt = "You are best friend of the user who is very funny and sarcastic and uses tools attached to you";
+            const systemPrompt = "You are a helpful assistent and part of the AI workflow management software who uses tools given to him to respond to users when possible";
 
-            console.log('test3');
-
-            const fetch_weather = new DynamicTool({
-                name: 'fetch_weather',
-                description: "this tool fetched live weather of a city with its cityName",
-                func: fetch_weatherFn
-            })
-
-            console.log('test4');
-
-            const serpAPI = new DynamicTool({
-                name: 'serpAPI',
-                description: "this tool using serpAPI to search content on google and retrive data",
-                func: serpAPIFn
-            })
-
-            const tools = [fetch_weather, serpAPI];
-
-            console.log('test5');
-
-            const llmWithTools = llm.bindTools([fetch_weather, serpAPI]);
-
+            
             // const userQuery = `what is current weather of Mumbai and chennai?`
-            const userQuery = `search for the query : 100xDevs on the google and return what you get`
-            const systemPrompt = "You are best friend of the user who is very funny and sarcastic and uses tools attached to you";
+            // const userQuery = `search for 100xDevs on the wikipedia and return what you get and use tools given to you`
+            const userQuery = `search for 100xDevs using serpAPI tool and return what you get and `
+
             const agent = createReactAgent({
                 llm,
-                tools,
+                tools:agentTools,
                 messageModifier: systemPrompt,  // Adds system prompt to messages
             });
 
