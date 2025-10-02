@@ -56,6 +56,10 @@ const nodeSchema=new Schema({
     type:ObjectId,
     ref:"Credential",
     default:null
+  },
+  jsonRequired:{
+    type:Boolean,
+    default:false
   }
 },{
   timestamps:true

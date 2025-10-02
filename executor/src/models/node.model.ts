@@ -43,10 +43,8 @@ const nodeSchema=new Schema({
     default:{}
   },
   prerequisiteNodes:{
-    type:[{
-      type:ObjectId,
-      ref:"Node"
-    }],
+    type:[ObjectId],
+    ref:"Node",
     default:[]
   },
   triggerId:{
@@ -59,18 +57,18 @@ const nodeSchema=new Schema({
     ref:"Credential",
     default:null
   },
-  allPrerequisitesSuccessNeeded:{
+  jsonRequired:{
     type:Boolean,
-    default:true
+    default:false
   }
 },{
   timestamps:true
 })
 
 const nodeInstanceSchema= new Schema({
-  workflowInstanceId:{
-    type:ObjectId,
-    ref:"WorkflowInstance"
+  executeWorkflowId:{
+    type:String,
+    required:true
   },
   nodeId:{
     type:ObjectId,
@@ -97,6 +95,14 @@ const nodeInstanceSchema= new Schema({
   error:{
     type:Schema.Types.Mixed,
     default:{}
+  },
+  waiting:{
+    type:Boolean,
+    default:null
+  },
+  waitingIdentifier:{
+    type:String,
+    default:null
   }
 },{
   timestamps:true
