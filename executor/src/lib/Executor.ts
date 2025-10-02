@@ -8,6 +8,7 @@ import axios from "axios"
 import { reduceEachTrailingCommentRange } from "typescript";
 import { LLM } from "../models/llm.model";
 import { Tool } from "../models/tool.model";
+import { z } from "zod"
 
 // import { tool } from "@langchain/core/tools";
 // import { z } from "zod";
@@ -19,6 +20,7 @@ import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
 import { DynamicTool } from "@langchain/core/tools";
 import { toolFunctionMap } from "../helpers/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { StructuredOutputParser } from "@langchain/core/output_parsers";
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -759,28 +761,37 @@ export default class Executor {
         console.log('inside aiNode handler');
 
         try {
-            const credentialFormName = node.credential?.credentialForm?.name
+            const credentialFormName = node.llm?.credential?.credentialForm?.name
+            const model = node.llm?.data?.model
             let llm;
-            console.log('test1');
 
+            if (credentialFormName == 'gemini') {
+                
+                llm = new ChatGoogleGenerativeAI({
+                    model: model??"gemini-2.0",
+                    apiKey: node.llm.credential.data.API_KEY,
+                    temperature: 0.7
+                });
+            } 
+
+            //TODO remove this global llm creator after frontend completed
             llm = new ChatGoogleGenerativeAI({
                 model: "gemini-2.0-flash",
                 apiKey: process.env.GOOGLE_API_KEY,
                 temperature: 0.7
             });
-            console.log('test2');
 
-            const agentTools:any = [];
+            const agentTools: any = [];
 
             const tools = node.tools;
-            for(let i=0;i<tools.length;i++){
+            for (let i = 0; i < tools.length; i++) {
                 const toolFormName = tools[i]?.toolForm?.name
-                console.log('toolFormName : ',toolFormName);
-                
+                console.log('toolFormName : ', toolFormName);
+
                 const toolFn = toolFunctionMap.get(toolFormName)
-                if(toolFn){
-                    console.log('description : ',tools[i].toolForm.description);
-                    
+                if (toolFn) {
+                    console.log('description : ', tools[i].toolForm.description);
+
                     const tool = new DynamicTool({
                         name: toolFormName,
                         description: tools[i]?.toolForm?.description,
@@ -789,49 +800,112 @@ export default class Executor {
                     agentTools.push(tool)
                 }
             }
-            // const systemPrompt = "You are best friend of the user who is very funny and sarcastic and uses tools attached to you";
-            const systemPrompt = "You are a helpful assistent and part of the AI workflow management software who uses tools given to him to respond to users when possible";
 
-            
+            const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
+            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed
+            `;
+
+            // const { userQuery } = node.data
             // const userQuery = `what is current weather of Mumbai and chennai?`
             // const userQuery = `search for 100xDevs on the wikipedia and return what you get and use tools given to you`
-            const userQuery = `search for 100xDevs using serpAPI tool and return what you get and `
+            // const userQuery = `What is meaning of Software developement `
+            // const userQuery = `I am curious about what exactly is AI and hwo it works`
+            // const userQuery = `Can you tell me currentl weather of Mumbai and SanFranisco `
+            // const userQuery = `I want to know about what is 100xSchool in India,fetch from inteernet if you dont know`
+            const userQuery = `what is 2 +2`
 
             const agent = createReactAgent({
                 llm,
-                tools:agentTools,
+                tools: agentTools,
                 messageModifier: systemPrompt,  // Adds system prompt to messages
             });
 
             const result = await agent.invoke({
-                messages: [{ role: "user", content: userQuery }],
+                messages: [
+                    { role: "user", content: userQuery }
+                ],
             });
+            console.log('result : ');
+            console.log(result);
 
-            const finalResponse = result.messages[result.messages.length - 1].content;
-            console.log("Final LLM Response:", finalResponse);
 
-            // // const prompt= userQuery.replace("{question}",'what is current weather of Mumbai?')
+            const llmRespponse = result.messages[result.messages.length - 1].content;
+            console.log("Final LLM Response:", llmRespponse);
 
-            // console.log('test6');
+            //TODO : uncomment these lines below when frontend completed and remove the hardcoded jsonSchema
 
-            // const response = await llmWithTools.invoke(prompt);
-            // console.log("LLM Response:", response.content);
-
-            /*
-            if (credentialFormName == 'gemini') {
-
+            // if (node.jsonRequired) {
+            //     //in aiNode user requires certain form of json
+            //     const { jsonSchema } = node.data
+            //     if (jsonSchema) {
+            const jsonSchema = {
+                "technicalQuestion": "Boolean (Weather question from user was technical or not)",
+                "likes": "Array of strings (Guess all the topics the user might be interested in based on the whole conversation)"
             }
+            const parsedJson = await this.helper_jsonParser(result, jsonSchema, llm, userQuery)
+            // } else {
+            // console.log('jsonRequired selected for aiNode but jsonSchema not defined');
+            // }
+            // }
 
-            console.log('inside aiNode handler ');
-            console.log('node : ', node);
-            console.log('inData : ', inData);
-            */
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId: node._id,
+                workflowId: this.workflowId,
+                inData,
+                outData: {
+                    ...inData,
+                    llmRespponse,
+                    ...parsedJson
+                }
+            })
 
             this.handleNextDependingNodeExecution(node._id)
         } catch (error) {
             console.log('ERROR : aiNode : ', error);
 
             this.handleNextDependingNodeExecution(node._id)
+        }
+    }
+
+    async helper_jsonParser(aiAgentResult: any, jsonSchema: any, llm: any, userQuery: string) {
+        try {
+
+            const extractionPrompt = `
+                You are a JSON extractor. 
+                Given the user query, final LLM response, and tool call metadata, 
+                produce ONLY valid JSON with this schema:
+        
+                ${JSON.stringify(jsonSchema)}
+                Return ONLY JSON IN STRINGIFIED FORMAT THAT I CAN JSON.parse on it, no explanation.
+                `;
+
+            const extractionResult = await llm.invoke([
+                { role: "system", content: extractionPrompt },
+                {
+                    role: "user", content: JSON.stringify(
+                        {
+                            userQuery,
+                            aiAgentResult,
+                        },
+                        null,
+                        2
+                    ),
+                },
+            ])
+            console.log('extractionResult : ', extractionResult);
+
+            const rawContent = extractionResult.content;
+            const cleaned = rawContent.replace(/```json|```/g, "").trim();
+
+            const llmExtractionResponse = cleaned
+            console.log('llmExtratcionResponse : ', llmExtractionResponse);
+            const parsedJson = JSON.parse(llmExtractionResponse);
+            console.log('parsedJson : ', parsedJson);
+            return parsedJson
+        } catch (error) {
+            console.log('ERROR : helper_jsonParser : ', error);
+            return {}
         }
     }
 }
