@@ -77,6 +77,7 @@ const toolSchema=new Schema({
   timestamps:true
 })
 
+//is this even necessary?
 const toolInstanceSchema = new Schema({
   workflowInstanceId:{
     type:ObjectId,

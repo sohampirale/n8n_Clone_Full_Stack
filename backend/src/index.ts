@@ -35,17 +35,15 @@ app.use("/api/v1/action", actionRouter)
 app.use("/api/v1/tool", toolsRouter)
 app.use("/api/v1/execution", executionInstanceRouter)
 
-app.post("/telegram_webhook",(req,res)=>{
-  console.log('webhook from telegram triggered ');
-  const data = req.body;
-  console.log('data received : ',data);
-  return res.status(200).json({})
-})
-
 startServer(app)
 
+//TODO everytime in credentialController a credential is created for telegram we set telegram webhook url using the bot_token user gives us from frontend
+
 // async function setWebhook() {
-//   const WEBHOOK_URL="https://turbo-orbit-pjqrxj57rrr5399qw-3001.app.github.dev/telegram_webhook"
+//  FOR THE EACH INDIVIDUAL
+//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/:username/telegram_webhook`
+
+//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/telegram_webhook`
 //   const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}`;
 //   const res = await fetch(url);
 //   const data = await res.json();

@@ -13,7 +13,8 @@ export async function getRedisClient(){
         console.log('Redis db connected successfully');
         return redis
     } catch (error) {
-        console.log('Failed to connect to redis DB');
+        console.log('ERROR ::  getRedisClient : ',error);
+        console.log('Failed to connect to redis DB,exiting gracefully');
         isConnected=false;
         process.exit()
     }

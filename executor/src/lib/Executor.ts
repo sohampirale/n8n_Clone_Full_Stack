@@ -1,14 +1,12 @@
-import mongoose, { isObjectIdOrHexString, mongo } from "mongoose";
+import mongoose from "mongoose";
 import type { IstartExecutionObject } from "../interfaces";
-import { Node, NodeAction, NodeInstance } from "../models/node.model";
+import { Node, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
 import { Resend } from "resend"
 import Mustache from "mustache"
 import axios from "axios"
-import { reduceEachTrailingCommentRange } from "typescript";
 import { LLM } from "../models/llm.model";
-import { Tool } from "../models/tool.model";
-import { z } from "zod"
+import { Tool, ToolInstance } from "../models/tool.model";
 
 // import { tool } from "@langchain/core/tools";
 // import { z } from "zod";
@@ -18,7 +16,6 @@ import { z } from "zod"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
 import { DynamicTool } from "@langchain/core/tools";
-import { toolFunctionMap } from "../helpers/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 
@@ -30,7 +27,7 @@ export default class Executor {
     triggerId: mongoose.Types.ObjectId;
     workflowId: mongoose.Types.ObjectId;
     owner: mongoose.Types.ObjectId;
-
+    toolFunctionMap: Map<string, any>;
     triggerInstance: any;
 
     constructor(startExecutionObject: IstartExecutionObject) {
@@ -45,12 +42,22 @@ export default class Executor {
             owner
         } = startExecutionObject
 
+        if (!workflowInstanceId || !triggerActionId || !triggerActionId || !triggerId || !workflowId || !owner) {
+            console.log('Insufficient data provided for executor');
+            throw new Error()
+        }
+
         this.workflowInstanceId = new mongoose.Types.ObjectId(workflowInstanceId)
         this.triggerInstanceId = new mongoose.Types.ObjectId(triggerInstanceId)
         this.triggerActionId = new mongoose.Types.ObjectId(triggerActionId)
         this.triggerId = new mongoose.Types.ObjectId(triggerId)
         this.workflowId = new mongoose.Types.ObjectId(workflowId)
         this.owner = new mongoose.Types.ObjectId(owner)
+        this.toolFunctionMap = new Map([
+            ['fetch_weather', this.fetchWeatherFn],
+            ['serpApi', this.serpApiFn],
+            ['wikipedia_search', this.wikipediaFn]
+        ])
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -58,11 +65,9 @@ export default class Executor {
         console.log('workflowId : ', workflowId);
         console.log('triggerId : ', triggerId);
         console.log('owner : ', owner);
+        console.log('toolFunctionMap : ', owner);
 
-        if (!workflowInstanceId || !triggerActionId || !triggerActionId || !triggerId || !workflowId || !owner) {
-            console.log('Insufficient data provided for executor');
-            throw new Error()
-        }
+
     }
 
     /** starting the execution of the workflow
@@ -766,13 +771,13 @@ export default class Executor {
             let llm;
 
             if (credentialFormName == 'gemini') {
-                
+
                 llm = new ChatGoogleGenerativeAI({
-                    model: model??"gemini-2.0",
+                    model: model ?? "gemini-2.0",
                     apiKey: node.llm.credential.data.API_KEY,
                     temperature: 0.7
                 });
-            } 
+            }
 
             //TODO remove this global llm creator after frontend completed
             llm = new ChatGoogleGenerativeAI({
@@ -908,4 +913,71 @@ export default class Executor {
             return {}
         }
     }
+
+    //adding all the tool functions that are needed in toolFunctionMap
+    async fetchWeatherFn(cityName: string) {
+        const weather = (24 + (Math.random() * 10));
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e97"),
+            workflowId: this.workflowId,
+            inData: {
+                cityName
+            },
+            outData: {
+                weather
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+        return weather
+    }
+
+    async serpApiFn(query: string) {
+        const serpApiResponse = {
+            message: `data fetched by serpApi for query : ${query},it is a school created by harkirat singh sir for enginnering students`
+        }
+
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e95"),
+            workflowId: this.workflowId,
+            inData: {
+                query
+            },
+            outData: {
+                serpApiResponse
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+
+        return serpApiResponse
+    }
+
+    async wikipediaFn(topicName: string) { 
+        const wikipediaResponse = `data from wikipedia about topic ${topicName},it is a school for enginnering students satrted by great developer` 
+
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e96"),
+            workflowId: this.workflowId,
+            inData: {
+                topicName
+            },
+            outData: {
+                wikipediaResponse
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+        return wikipediaResponse
+    }
+
 }

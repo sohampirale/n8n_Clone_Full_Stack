@@ -5,7 +5,7 @@ import Workflow, { WorkflowInstance } from "../models/workflow.model.js";
 import { Trigger, TriggerInstance } from "../models/trigger.model.js";
 import { getRedisClient } from "../helpers/redisClient.js";
 import User from "../models/user.model.js";
-import { REDISEARCH_LANGUAGE } from "redis";
+import { createClient, REDISEARCH_LANGUAGE } from "redis";
 
 /**Start execution workflow through manuall trigger
  * 1.retrive userId from req.user
@@ -274,5 +274,19 @@ export async function executeWebhookTrigger(req: Request, res: Response) {
         return res.status(500).json(
             new ApiResponse(false, `Failed to trigger the requested workflow with webhook`)
         )
+    }
+}
+
+export async function telegramWebhook(req:Request,res:Response){
+    try {
+        console.log('inside telegram webhook');
+        const data = req.body
+        console.log('data received : ',data);
+        const redis = await getRedisClient();
+        await redis.lPush("executor:telegram_webhook",JSON.stringify(data))
+        return res.status(200).json({})
+    } catch (error) {
+        console.log('ERROR : telegramWebhook : ',error);
+        
     }
 }

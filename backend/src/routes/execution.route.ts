@@ -1,6 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
-import { executeManualTrigger, executeWebhookTrigger } from "../controllers/execution.controller.js";
+import { executeManualTrigger, executeWebhookTrigger, telegramWebhook } from "../controllers/execution.controller.js";
 const executionInstanceRouter = Router()
 
 executionInstanceRouter.route("/:username/:slug/manual")
@@ -8,5 +8,8 @@ executionInstanceRouter.route("/:username/:slug/manual")
 
 executionInstanceRouter.route("/:username/:slug/webhook")
     .post(authMiddleware,executeWebhookTrigger)
+
+executionInstanceRouter.route("/telegram_webhook")
+    .post(telegramWebhook)
 
 export default executionInstanceRouter;
