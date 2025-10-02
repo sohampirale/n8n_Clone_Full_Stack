@@ -9,7 +9,7 @@ executionInstanceRouter.route("/:username/:slug/manual")
 executionInstanceRouter.route("/:username/:slug/webhook")
     .post(authMiddleware,executeWebhookTrigger)
 
-executionInstanceRouter.route("/telegram_webhook")
+executionInstanceRouter.route("/:username/telegram_webhook")
     .post(telegramWebhook)
 
 export default executionInstanceRouter;

@@ -40,10 +40,10 @@ startServer(app)
 //TODO everytime in credentialController a credential is created for telegram we set telegram webhook url using the bot_token user gives us from frontend
 
 // async function setWebhook() {
-//  FOR THE EACH INDIVIDUAL
-//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/:username/telegram_webhook`
+// //  FOR THE EACH INDIVIDUAL
+//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/soham3/telegram_webhook`
 
-//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/telegram_webhook`
+//   // const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/telegram_webhook`
 //   const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}`;
 //   const res = await fetch(url);
 //   const data = await res.json();

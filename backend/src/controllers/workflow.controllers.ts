@@ -244,6 +244,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     const trigger = await Trigger.create({
       triggerActionId,
       workflowId: existingWorkflow._id,
+      owner:userId,
       data: data ?? {}
     })
 
