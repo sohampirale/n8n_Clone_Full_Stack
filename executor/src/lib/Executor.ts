@@ -7,6 +7,7 @@ import Mustache from "mustache"
 import axios, { all } from "axios"
 import { LLM } from "../models/llm.model";
 import { Tool, ToolInstance } from "../models/tool.model";
+import { z } from "zod"
 
 // import { tool } from "@langchain/core/tools";
 // import { z } from "zod";
@@ -15,10 +16,16 @@ import { Tool, ToolInstance } from "../models/tool.model";
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
-import { DynamicTool } from "@langchain/core/tools";
+import { DynamicTool, tool } from "@langchain/core/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 import type { Node } from "@langchain/core/runnables/graph";
+
+const allToolsSchema = {
+    fetch_weather: z.object({
+        cityName: z.string().describe('cityname whose current weather needs to be fetched')
+    })
+}
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -30,6 +37,7 @@ export default class Executor {
     owner: mongoose.Types.ObjectId;
     toolFunctionMap: Map<string, any>;
     triggerInstance: any;
+    waitingToolInstances: Map<string, any>;
 
     constructor(startExecutionObject: IstartExecutionObject) {
         console.log('startExecutionObject : ', startExecutionObject);
@@ -59,6 +67,7 @@ export default class Executor {
             ['serpApi', this.serpApiFn],
             ['wikipedia_search', this.wikipediaFn]
         ])
+        this.waitingToolInstances = new Map()
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -167,7 +176,7 @@ export default class Executor {
 
                     console.log('node handler to be started is : telegram_send_message_and_wait_for_response');
                     const inData = await this.inDataProducer(node._id)
-                    this.start_telegram_send_message_and_wait_for_response(node,inData)
+                    this.start_telegram_send_message_and_wait_for_response(node, inData)
                 }
             }
 
@@ -250,6 +259,7 @@ export default class Executor {
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
                 nodeId,
+                owner: this.owner,
                 workflowId: this.workflowId,
                 inData,
                 outData: {},
@@ -370,7 +380,7 @@ export default class Executor {
             //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
             const bot_token = process.env.TELEGRAM_BOT_TOKEN;
 
-            const nodeId=node._id
+            const nodeId = node._id
 
             if (!bot_token) {
                 throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
@@ -403,7 +413,7 @@ export default class Executor {
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
                 nodeId,
-                owner:this.owner,
+                owner: this.owner,
                 workflowId: this.workflowId,
                 inData,
                 outData: {
@@ -415,8 +425,8 @@ export default class Executor {
                 waitingIdentifier: chat_id
             })
 
-            console.log('nodeInstance created : ',nodeInstance);
-            
+            console.log('nodeInstance created : ', nodeInstance);
+
             Object.assign(nodeInstance.outData, response)
             console.log('stopping start_telegram_send_message_and_wait_for_response');
             //abort here and resume_telegram_send_message_and_wait_for_response
@@ -428,7 +438,7 @@ export default class Executor {
     async resume_telegram_send_message_and_wait_for_response(nodeInstanceIdStr: mongoose.Schema.Types.ObjectId, telegramWebhookData) {
         try {
 
-            const nodeInstanceId=new mongoose.Types.ObjectId(nodeInstanceIdStr)
+            const nodeInstanceId = new mongoose.Types.ObjectId(nodeInstanceIdStr)
             const nodeInstance = await NodeInstance.findOne({
                 _id: nodeInstanceId
             })
@@ -442,23 +452,23 @@ export default class Executor {
             }
 
             const text = telegramWebhookData?.message?.text;
-            if(!text){
+            if (!text) {
                 console.log('Text not found in resume_telegram_send_message_and_wait_for_response handler');
-                return; 
-            } 
-            console.log('Text received from user : ',text);
-            console.log('old outData : ',nodeInstance.outData);
-            
+                return;
+            }
+            console.log('Text received from user : ', text);
+            console.log('old outData : ', nodeInstance.outData);
+
             nodeInstance.outData.receivedMessage = text
             nodeInstance.waiting = false;
             nodeInstance.waitingIdentifier = ""
-            console.log('updated outData : ',nodeInstance.outData);
+            console.log('updated outData : ', nodeInstance.outData);
 
 
             await nodeInstance.save()
             this.handleNextDependingNodeExecution(nodeInstanceId)
         } catch (error) {
-            console.log('ERROR :: resume_telegram_send_message_and_wait_for_response : ',error);
+            console.log('ERROR :: resume_telegram_send_message_and_wait_for_response : ', error);
             this.handleNextDependingNodeExecution(nodeInstanceId)
         }
     }
@@ -577,6 +587,7 @@ export default class Executor {
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
                 nodeId,
+                owner: this.owner,
                 workflowId: this.workflowId,
                 inData,
                 outData: {},
@@ -918,6 +929,7 @@ export default class Executor {
                     workflowInstanceId: this.workflowInstanceId,
                     nodeId: new mongoose.Types.ObjectId(nodeIdStr),
                     workflowId: this.workflowId,
+                    owner: this.owner,
                     inData: inData ?? {},
                     outData: {},
                     executeSuccess: false,
@@ -985,41 +997,71 @@ export default class Executor {
             llm = new ChatGoogleGenerativeAI({
                 model: "gemini-2.0-flash",
                 apiKey: process.env.GOOGLE_API_KEY,
-                temperature: 0.7
+                temperature: 0
             });
 
+
+            const aiNodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId: node._id,
+                owner: this.owner,
+                workflowId: this.workflowId,
+                inData,
+                outData: {
+                    ...inData,
+                }
+            })
+
+            const initialState = {
+                chat_id: "123456789",  // maybe from DB/session
+                user_id: "soham",
+                workflowInstanceId: this.workflowInstanceId,
+                workflowId: this.workflowId,
+
+            };
+    
+            
             const agentTools: any = [];
 
             const tools = node.tools;
             for (let i = 0; i < tools.length; i++) {
-                const toolFormName = tools[i]?.toolForm?.name
-                console.log('toolFormName : ', toolFormName);
+                    const toolFormName = tools[i]?.toolForm?.name
+                    console.log('toolFormName : ', toolFormName);
+                    if (this.toolFunctionMap.has(toolFormName)) {
+                        initialState[toolFormName] = {
+                            aiNodeInstanceId: aiNodeInstance._id,
+                            toolId: tools[i]._id
+                        }
+                        const toolFn = this.toolFunctionMap.get(toolFormName)
+                        console.log('description : ', tools[i].toolForm.description);
+                        const someLocalVariable="hehe"
+                        const tool = new DynamicTool({
+                            name: toolFormName,
+                            description: tools[i]?.toolForm?.description,
+                            func: async (input)=>{
+                                return await toolFn(input,initialState)
+                            },
+                            schema:allToolsSchema[toolFormName]
+                        })
+                        console.log('created tool with DynamicTool : ');
 
-                const toolFn = toolFunctionMap.get(toolFormName)
-                if (toolFn) {
-                    console.log('description : ', tools[i].toolForm.description);
-
-                    const tool = new DynamicTool({
-                        name: toolFormName,
-                        description: tools[i]?.toolForm?.description,
-                        func: toolFn
-                    })
-                    agentTools.push(tool)
+                        agentTools.push(tool)
+                    }
                 }
-            }
 
             const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
-            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed
+            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed,
+            when using tools provide the tool with first argument as exactly one JSON object and nothing else , matching the tool's Schema field
             `;
 
             // const { userQuery } = node.data
-            // const userQuery = `what is current weather of Mumbai and chennai?`
+            const userQuery = `what is current weather of Mumbai ?`
             // const userQuery = `search for 100xDevs on the wikipedia and return what you get and use tools given to you`
             // const userQuery = `What is meaning of Software developement `
             // const userQuery = `I am curious about what exactly is AI and hwo it works`
             // const userQuery = `Can you tell me currentl weather of Mumbai and SanFranisco `
             // const userQuery = `I want to know about what is 100xSchool in India,fetch from inteernet if you dont know`
-            const userQuery = `what is 2 +2`
+            // const userQuery = `what is 2 +2`
 
             const agent = createReactAgent({
                 llm,
@@ -1027,11 +1069,11 @@ export default class Executor {
                 messageModifier: systemPrompt,  // Adds system prompt to messages
             });
 
-            const result = await agent.invoke({
-                messages: [
-                    { role: "user", content: userQuery }
-                ],
-            });
+            const result = await agent.invoke(
+                { messages: [{ role: "user", content: userQuery }] },
+                { configurable: { state: initialState } }
+            );
+
             console.log('result : ');
             console.log(result);
 
@@ -1055,17 +1097,9 @@ export default class Executor {
             // }
             // }
 
-            const nodeInstance = await NodeInstance.create({
-                workflowInstanceId: this.workflowInstanceId,
-                nodeId: node._id,
-                workflowId: this.workflowId,
-                inData,
-                outData: {
-                    ...inData,
-                    llmRespponse,
-                    ...parsedJson
-                }
-            })
+            aiNodeInstance.outData.llmRespponse = llmRespponse
+            Object.assign(aiNodeInstance.outData, parsedJson)
+            await aiNodeInstance.save()
 
             this.handleNextDependingNodeExecution(node._id)
         } catch (error) {
@@ -1117,24 +1151,36 @@ export default class Executor {
     }
 
     //adding all the tool functions that are needed in toolFunctionMap
-    async fetchWeatherFn(cityName: string) {
-        const weather = (24 + (Math.random() * 10));
-        const toolInstance = await ToolInstance.create({
-            workflowInstanceId: this.workflowInstanceId,
-            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e97"),
-            workflowId: this.workflowId,
-            inData: {
-                cityName
-            },
-            outData: {
-                weather
-            },
-            executeSuccess: true,
-            error: {},
-            waiting: false,
-            waitingIdentifier: null
-        })
-        return weather
+    async fetchWeatherFn(input: any, state: any) {
+        try {
+
+            console.log('inside fetchWeatherFn');
+            console.log('input : ', input);
+            console.log('state : ', state);
+            console.log('someLocalVariable : ',someLocalVariable);
+            
+            const weather = (24 + (Math.random() * 10));
+            // const toolInstance = await ToolInstance.create({
+            //     workflowInstanceId: this.workflowInstanceId,
+            //     toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e97"),
+            //     workflowId: this.workflowId,
+            //     aiNodeInstanceId:"32323bjhbhkuvbb12311",
+            //     inData: {
+            //         cityName: input
+            //     },
+            //     outData: {
+            //         weather
+            //     },
+            //     executeSuccess: true,
+            //     error: {},
+            //     waiting: false,
+            //     waitingIdentifier: null
+            // })
+            return weather
+        } catch (error) {
+            console.log('ERROR :: fetchWeatherFn : ', error);
+
+        }
     }
 
     async serpApiFn(query: string) {
@@ -1180,6 +1226,40 @@ export default class Executor {
             waitingIdentifier: null
         })
         return wikipediaResponse
+    }
+
+    async telegram_send_message_and_wait_for_response_toolFN(input:any,state:any) {
+        try {
+            // toolInstanceId: string, bot_token: string, chat_id: string, text: string
+            // const toolInstance = await ToolInstance.findById(new mongoose.Types.ObjectId(toolInstanceId))
+            // if (!toolInstance) {
+                // return "invalid toolInstanceId provided in first argument"
+            // }
+            console.log('inside telegram_send_message_and_wait_for_response_toolFN');
+            console.log('input : ',input);
+            console.log('state');
+            
+            const {bot_token,aiNodeInstanceId}=state
+
+            const url = `https://api.telegram.org/bot${bot_token}/sendMessage`
+            const { data: response } = await axios.post(url, {
+                chat_id,
+                text,
+                parse_mode: "HTML"
+            })
+            toolInstance.waiting = true;
+            toolInstance.waitingIdentifier = chat_id;
+            await toolInstance.save()
+
+
+            const promise = new Promise((resolve, reject) => {
+                this.waitingToolInstances.set((toolInstance._id).toString(), resolve)
+            })
+            return promise
+        } catch (error) {
+            console.log('ERROR : telegram_send_message_and_wait_for_response_toolFN : ', error);
+            return "error sending message on telegram and waiting for response"
+        }
     }
 
 }
