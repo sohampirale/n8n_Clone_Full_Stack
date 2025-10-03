@@ -66,7 +66,7 @@ const nodeSchema=new Schema({
 })
 
 const nodeInstanceSchema= new Schema({
-  executeWorkflowId:{
+  workflowInstanceId:{
     type:String,
     required:true
   },

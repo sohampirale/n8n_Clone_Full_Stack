@@ -94,6 +94,11 @@ const toolInstanceSchema = new Schema({
     ref:"Workflow",
     required:true
   },
+  aiNodeInstanceId:{
+    type:ObjectId,
+    ref:"Node",
+    required:true
+  },
   inData:{
     type:Schema.Types.Mixed,
     default:{}

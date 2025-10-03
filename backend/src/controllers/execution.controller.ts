@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import mongoose from "mongoose";
+import mongoose, { mongo } from "mongoose";
 import ApiResponse from "../lib/ApiResponse.js";
 import Workflow, { WorkflowInstance } from "../models/workflow.model.js";
 import { Trigger, TriggerInstance } from "../models/trigger.model.js";
@@ -7,6 +7,9 @@ import { getRedisClient } from "../helpers/redisClient.js";
 import User from "../models/user.model.js";
 import { createClient, REDISEARCH_LANGUAGE } from "redis";
 import { Credential } from "../models/credential.model.js";
+import { NodeInstance } from "../models/node.model.js";
+import { ToolInstance } from "../models/tool.model.js";
+import type { Schema } from "zod";
 
 /**Start execution workflow through manuall trigger
  * 1.retrive userId from req.user
@@ -32,8 +35,8 @@ export async function executeManualTrigger(req: Request, res: Response) {
             username
         })
 
-        console.log('user : ',user);
-        
+        console.log('user : ', user);
+
         if (!user) {
             return res.status(404).json(
                 new ApiResponse(false, `User not found with given username in query`)
@@ -210,66 +213,66 @@ export async function executeWebhookTrigger(req: Request, res: Response) {
             }
         ])
 
-        if(!triggerDocs || triggerDocs.length==0){
+        if (!triggerDocs || triggerDocs.length == 0) {
             return res.status(404).json(
-                new ApiResponse(false,`Trigger not found for the requested workflow`)
+                new ApiResponse(false, `Trigger not found for the requested workflow`)
             )
-        } 
+        }
 
         const trigger = triggerDocs[0]
         const requiredMethod = trigger?.data?.method
         const triggerAction = trigger.triggerAction
 
-        if(!triggerAction){
+        if (!triggerAction) {
             return res.status(404).json(
-                new ApiResponse(false,`Trigger action not found for the registered trigger obj`)
+                new ApiResponse(false, `Trigger action not found for the registered trigger obj`)
             )
-        } else if(!triggerAction.publicallyAvailaible){
+        } else if (!triggerAction.publicallyAvailaible) {
             return res.status(400).json(
-                new ApiResponse(false,`Requested trigger action is temporarily disabled consider trying again later or using different trigger action`)
+                new ApiResponse(false, `Requested trigger action is temporarily disabled consider trying again later or using different trigger action`)
             )
-        } else if(triggerAction.name=='trigger:webhook'){
+        } else if (triggerAction.name == 'trigger:webhook') {
             return res.status(400).json(
-                new ApiResponse(false,`Requested workflow does not have webhook as trigger`)
+                new ApiResponse(false, `Requested workflow does not have webhook as trigger`)
             )
-        } else if(method!=requiredMethod){
+        } else if (method != requiredMethod) {
             return res.status(400).json(
-                new ApiResponse(false,`Required http method : ${requiredMethod}, received method : ${method}`)
+                new ApiResponse(false, `Required http method : ${requiredMethod}, received method : ${method}`)
             )
         }
 
         const redis = await getRedisClient()
 
-        const workflowInstance= await WorkflowInstance.create({
-            workflowId:workflow._id,
-            owner:user._id,
+        const workflowInstance = await WorkflowInstance.create({
+            workflowId: workflow._id,
+            owner: user._id,
         })
 
         const triggerInstance = await TriggerInstance.create({
-            workflowInstanceId:workflowInstance._id,
-            triggerId:trigger._id,
-            workflowId:workflow._id,
-            owner:user._id,
-            inData:receivedData // data from webhook provider
+            workflowInstanceId: workflowInstance._id,
+            triggerId: trigger._id,
+            workflowId: workflow._id,
+            owner: user._id,
+            inData: receivedData // data from webhook provider
         })
 
-        workflowInstance.triggerInstanceId=triggerInstance._id
+        workflowInstance.triggerInstanceId = triggerInstance._id
 
         await workflowInstance.save()
 
-        const executionStartObject={
-            workflowInstanceId:workflowInstance._id,
-            triggerInstanceId:triggerInstance._id,
-            triggerId:trigger._id,
-            triggerActionId:triggerAction._id,
-            workflowId:workflow._id,
-            owner:user._id
+        const executionStartObject = {
+            workflowInstanceId: workflowInstance._id,
+            triggerInstanceId: triggerInstance._id,
+            triggerId: trigger._id,
+            triggerActionId: triggerAction._id,
+            workflowId: workflow._id,
+            owner: user._id
         }
 
-        await redis.lPush("executor:trigger",JSON.stringify(executionStartObject))
+        await redis.lPush("executor:trigger", JSON.stringify(executionStartObject))
 
         return res.status(200).json(
-            new ApiResponse(true, `Workflow triggered successfully using webhook trigger`,executionStartObject)
+            new ApiResponse(true, `Workflow triggered successfully using webhook trigger`, executionStartObject)
         )
     } catch (error) {
         return res.status(500).json(
@@ -278,37 +281,104 @@ export async function executeWebhookTrigger(req: Request, res: Response) {
     }
 }
 
-export async function telegramWebhook(req:Request,res:Response){
+async function startNewTelegramConversation(userId:mongoose.Schema.Types.ObjectId,data:any,redis:any,chat_id:string) {
+    const allTriggers = await Trigger.aggregate([
+        {
+            $match: {
+                owner: userId
+            }
+        }, {
+            $lookup: {
+                from: "triggeractions",
+                foreignField: "_id",
+                localField: "triggerActionId",
+                as: "triggerAction"
+            }
+        }, {
+            $unwind: {
+                path: "$triggerAction"
+            }
+        }
+    ])
+
+    console.log('allTriggers : ', allTriggers);
+
+    for (let i = 0; i < allTriggers.length; i++) {
+        if (allTriggers[i]?.triggerAction?.name == 'trigger:telegram_on_message') {
+            console.log('workflow with trigger_telegram_on_message found');
+            try {
+                const workflowInstance = await WorkflowInstance.create({
+                    workflowId: allTriggers[i].workflowId,
+                    owner: userId,
+                })
+
+                const triggerInstance = await TriggerInstance.create({
+                    workflowInstanceId: workflowInstance._id,
+                    triggerId: allTriggers[i]._id,
+                    workflowId: allTriggers[i].workflowId,
+                    owner: userId,
+                    inData: data,
+                    outData: data,
+                    executeSuccess: true,
+                    error: {}
+                })
+
+                workflowInstance.triggerInstanceId = triggerInstance._id
+                await workflowInstance.save()
+
+                const executionStartObject = {
+                    workflowInstanceId: workflowInstance._id,
+                    triggerInstanceId: triggerInstance._id,
+                    triggerId: allTriggers[i]._id,
+                    triggerActionId: allTriggers[i].triggerActionId,
+                    workflowId: allTriggers[i].workflowId,
+                    owner: userId,
+                    chat_id
+                }
+
+                await redis.lPush("executor:trigger", JSON.stringify(executionStartObject))
+            } catch (error) {
+                console.log('ERROR :: telegramWebhook :: all worflows with trigger as trigger:telegram_on_message : ', error);
+            }
+        }
+    }
+
+    //TODO : if any nodeInstance or toolInstances waiting on this chat_id the abort them
+    // text=='/start' means user just started the conversation again so no need to wait on these old convo
+
+}
+
+export async function telegramWebhook(req: Request, res: Response) {
     try {
-        const {username}=req.params;
-        console.log('Telegram webhook triggered of username : ',username);
-        
+        const { username } = req.params;
+        console.log('Telegram webhook triggered of username : ', username);
+
         console.log('inside telegram webhook');
         const data = req.body
-        if(!data){
+        if (!data) {
             return res.status(400).json({
-                message:'No data received'
+                message: 'No data received'
             })
-        } else if(!data.message){
+        } else if (!data.message) {
             console.log('message field not found in the receievd data from telegram webhook');
             return res.status(400).json({
-                message:'No data received'
+                message: 'No data received'
             })
         }
-        
-        const text=data.message.text
-        const chat_id=data.message.chat?.id
-        const first_name=data.message.chat?.first_name
-        const last_name=data.message.chat?.last_name
-        
-        if(!chat_id){
+
+        const text = data.message.text
+        const chat_id = data.message.chat?.id
+        const first_name = data.message.chat?.first_name
+        const last_name = data.message.chat?.last_name
+
+        if (!chat_id) {
             console.log('no chat_id found');
             return res.status(400).json({
-                message:'No  chat_id found'
+                message: 'No  chat_id found'
             })
-        } else if(!text){
+        } else if (!text) {
             return res.status(400).json({
-                message:'No user text found'
+                message: 'No user text found'
             })
         }
 
@@ -317,82 +387,118 @@ export async function telegramWebhook(req:Request,res:Response){
         })
 
 
-        if(!user){
+        if (!user) {
             return res.status(404).json({
-                message:'User not found with provided username in params'
+                message: 'User not found with provided username in params'
             })
         }
-        const userId=user._id
+        
+        const userId:mongoose.Schema.Types.ObjectId = user._id
 
         let credential = await Credential.aggregate([
             {
-                $match:{
-                    owner:user._id
+                $match: {
+                    owner: user._id
                 }
-            },{
-                $lookup:{
-                    from:"credentialforms",
-                    foreignField:"_id",
-                    localField:"credentialFormId",
-                    as:"credentialForm",
-                    pipeline:[
+            }, {
+                $lookup: {
+                    from: "credentialforms",
+                    foreignField: "_id",
+                    localField: "credentialFormId",
+                    as: "credentialForm",
+                    pipeline: [
                         {
-                            $match:{
-                                name:'telegram'
+                            $match: {
+                                name: 'telegram'
                             }
                         }
                     ]
                 }
-            },{
-                $unwind:{
-                    path:"$credentialForm"
+            }, {
+                $unwind: {
+                    path: "$credentialForm"
                 }
             }
         ])
-        
-        console.log('credential ; ',credential);
-        if(!credential || credential.length==0){
-            console.log('Telegram credential not found for the user with username : ',username);
+
+        console.log('credential ; ', credential);
+        if (!credential || credential.length == 0) {
+            console.log('Telegram credential not found for the user with username : ', username);
             return res.status(404).json({
-                message:'Telegram credential not found'
+                message: 'Telegram credential not found'
             })
         }
-        credential=credential[0]
-
-        if(text=='/start'){
-            //check if any workflow exists of user user._id which has this telegram_on_message as trigger
-            const allTriggers = await Trigger.aggregate([
-                {
-                    $match:{
-                        owner:userId
-                    }
-                },{
-                    $lookup:{
-                        from:"triggeractions",
-                        foreignField:"_id",
-                        localField:"triggerActionId",
-                        as:"triggerAction"
-                    }
-                },{
-                    $unwind:{
-                        path:"$triggerAction"
-                    }
-                }
-            ])
-
-            console.log('allTriggers : ',allTriggers);
-            
+        credential = credential[0]
+        let redis;
+        try {
+            redis = await getRedisClient()
+        } catch (error) {
+            console.log('Failed to get redis client');
+            return res.status(500).json({
+                message: "Failed to connect redis DB"
+            })
         }
-        
+
+        if (text == '/start') {
+            //check if any workflow exists of user user._id which has this telegram_on_message as trigger
+            res.status(200).json({})
+            await startNewTelegramConversation(userId,data,redis,chat_id)
+        } else {
+            //is there any nodeInstance thats waiting for the message with this waitingIdentifier : chat_id
+            const nodeInstance = await NodeInstance.findOne({
+                owner: userId,
+                waiting: true,
+                waitingIdetifier: chat_id
+            }).sort({ createdAt: 1 });
+
+            if (nodeInstance) {
+                res.status(200).json({})
+                console.log('There is one nodeInstance of trigger:telegram_on_message waiting on chat_id : ', chat_id);
+                const resumeWorkflowObj = {
+                    workflowInstanceId: nodeInstance.workflowInstanceId,
+                    nodeId: nodeInstance.nodeId,
+                    nodeInstanceId: nodeInstance._id,
+                    chat_id
+                }
+                await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
+            } else {
+                
+                //check if any tool is waiting with waitingIdentifier:chat_id
+                const toolInstance = await ToolInstance.findOne({
+                    owner: userId,
+                    waiting: true,
+                    waitingIdentifier: chat_id
+                }).sort({ createClient: 1 })
+
+                if (toolInstance) {
+                     res.status(200).json({})
+
+                    console.log('There is one toolInstance of tool:telegram_on_message waiting on chat_id : ', chat_id);
+                    console.log('toolInstance : ', toolInstance);
+                    const resumeToolObj = {
+                        workflowInstanceId: toolInstance.workflowInstanceId,
+                        toolInstanceId: toolInstance._id,
+                        aiNodeInstanceId: toolInstance.aiNodeInstanceId,
+                        chat_id
+                    }
+                    await redis.lPush("executor:tool:telegram_on_message", JSON.stringify(resumeToolObj))
+                } else {
+                    res.status(200).json({})
+
+                    console.log('No node or tool is waiting on this chat_id so lets trigger any workflows as if the text is /start');
+                    await startNewTelegramConversation(userId,data,redis,chat_id)
+                }
+            }
+        }
+
 
 
         // console.log('data received : ',data);
         // data.user=user;
         // const redis = await getRedisClient();
         // await redis.lPush("executor:telegram_webhook",JSON.stringify(data))
-        return res.status(200).json({})
     } catch (error) {
-        console.log('ERROR : telegramWebhook : ',error);
-        
+        console.log('ERROR : telegramWebhook : ', error);
+
     }
 }
