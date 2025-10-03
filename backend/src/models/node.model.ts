@@ -56,13 +56,17 @@ const nodeSchema=new Schema({
     type:ObjectId,
     ref:"Credential",
     default:null
+  },
+  jsonRequired:{
+    type:Boolean,
+    default:false
   }
 },{
   timestamps:true
 })
 
 const nodeInstanceSchema= new Schema({
-  executeWorkflowId:{
+  workflowInstanceId:{
     type:String,
     required:true
   },
@@ -86,11 +90,19 @@ const nodeInstanceSchema= new Schema({
   },
   executeSuccess:{
     type:Boolean,
-    default:false
+    default:true
   },
   error:{
     type:Schema.Types.Mixed,
-    default:undefined
+    default:{}
+  },
+  waiting:{
+    type:Boolean,
+    default:null
+  },
+  waitingIdentifier:{
+    type:String,
+    default:null
   }
 },{
   timestamps:true

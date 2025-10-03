@@ -6,6 +6,11 @@ const llmSchema = new Schema({
         type: String,
         required: true
     },
+    credentialId: {
+        type: ObjectId,
+        ref: "Credential",
+        required: true
+    },
     owner: {
         type: ObjectId,
         ref: "User",

@@ -244,6 +244,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     const trigger = await Trigger.create({
       triggerActionId,
       workflowId: existingWorkflow._id,
+      owner:userId,
       data: data ?? {}
     })
 
@@ -302,13 +303,7 @@ export async function updateWorkflow(req: Request, res: Response) {
         const node = await Node.create({
           nodeActionId,
           workflowId: existingWorkflow._id,
-          data: {
-            "RESEND_API_KEY": "re_9gvf8cFX_NtwUFx3ErqKrYKebPyYSmH3r",
-            "from": "Acme <onboarding@resend.dev>",
-            "to": "sohampirale20504@gmail.com",
-            "subject": "First email from n8n",
-            "html": "Hey there, let's build this amazing project"
-          },
+          data: {},
           prerequisiteNodes: prerequisiteNodesDBIds,
           triggerId
         })

@@ -1,9 +1,25 @@
-import mongoose, { isObjectIdOrHexString } from "mongoose";
+import mongoose from "mongoose";
 import type { IstartExecutionObject } from "../interfaces";
-import { Node, NodeAction, NodeInstance } from "../models/node.model";
+import { Node, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
 import { Resend } from "resend"
+import Mustache from "mustache"
+import axios from "axios"
+import { LLM } from "../models/llm.model";
+import { Tool, ToolInstance } from "../models/tool.model";
 
+// import { tool } from "@langchain/core/tools";
+// import { z } from "zod";
+// import { createReactAgentExecutor } from "@langchain/langgraph";
+// import { ChatGoogleGenerativeAI } from "@langchain/google-genai"; 
+
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
+import { DynamicTool } from "@langchain/core/tools";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { StructuredOutputParser } from "@langchain/core/output_parsers";
+
+//TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
     workflowInstanceId: mongoose.Types.ObjectId;
     triggerInstanceId: mongoose.Types.ObjectId;
@@ -11,7 +27,7 @@ export default class Executor {
     triggerId: mongoose.Types.ObjectId;
     workflowId: mongoose.Types.ObjectId;
     owner: mongoose.Types.ObjectId;
-
+    toolFunctionMap: Map<string, any>;
     triggerInstance: any;
 
     constructor(startExecutionObject: IstartExecutionObject) {
@@ -26,12 +42,22 @@ export default class Executor {
             owner
         } = startExecutionObject
 
+        if (!workflowInstanceId || !triggerActionId || !triggerActionId || !triggerId || !workflowId || !owner) {
+            console.log('Insufficient data provided for executor');
+            throw new Error()
+        }
+
         this.workflowInstanceId = new mongoose.Types.ObjectId(workflowInstanceId)
         this.triggerInstanceId = new mongoose.Types.ObjectId(triggerInstanceId)
         this.triggerActionId = new mongoose.Types.ObjectId(triggerActionId)
         this.triggerId = new mongoose.Types.ObjectId(triggerId)
         this.workflowId = new mongoose.Types.ObjectId(workflowId)
         this.owner = new mongoose.Types.ObjectId(owner)
+        this.toolFunctionMap = new Map([
+            ['fetch_weather', this.fetchWeatherFn],
+            ['serpApi', this.serpApiFn],
+            ['wikipedia_search', this.wikipediaFn]
+        ])
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -39,11 +65,9 @@ export default class Executor {
         console.log('workflowId : ', workflowId);
         console.log('triggerId : ', triggerId);
         console.log('owner : ', owner);
+        console.log('toolFunctionMap : ', owner);
 
-        if (!workflowInstanceId || !triggerActionId || !triggerActionId || !triggerId || !workflowId || !owner) {
-            console.log('Insufficient data provided for executor');
-            throw new Error()
-        }
+
     }
 
     /** starting the execution of the workflow
@@ -100,26 +124,140 @@ export default class Executor {
         }
     }
 
-    async telegram_send_message(nodeId: string) {
-        console.log('Message send using telegram');
-        const telegramSendMessageInstance = await NodeInstance.create({
-            workflowInstanceId: this.workflowInstanceId,
-            nodeId,
-            workflowId: this.workflowId,
-            inData: {},
-            outData: {
-                telegram_send_message: 'Message sent sucesfully using telegram node'
-            }
-        })
+    /**
+     * 1.retive that node also lookup the nodeAction from db using nodeId
+     * 2.cross check if nodeAction.name=='telegram_send_message'
+     * 3.retrive credential using the node.credentialId also lookup for credentialForm using credentialFormId and 
+     * if credential not found reject - telegram credential not found for this node
+     * then cross check if the credential.credentialFormId.name =='telegram' if not reject - incorrect credential attached to this node
+     * 4.retrive bot_token from node.credential.data.bot_token if not found reject - bot_token not foud for the attached credential
+     * 5.retrive chat_id and text from inData and then check if all of the required fields are given 
+     * 6.use Mustache to render it using inData
+     * 7.send message using telegram api 
+     * 8.create the instance of that node
+     * 9.call handleNextDependingNodeExecution
+     */
 
-        this.handleNextDependingNodeExecution(nodeId)
-        return;
+    async telegram_send_message(nodeIdStr: string, inData: any) {
+        console.log('inside telegram_send_message');
 
-        const bot_api = "8287220121:AAHPZ6uFAJB_vUsTW1AukNYFHHkrV_uUBAA"
         try {
-            // const chatId = `${}`
-        } catch (error) {
 
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+
+            let node = await Node.aggregate([{
+                $match: {
+                    _id: nodeId
+                }
+            }, {
+                $lookup: {
+                    from: "nodeactions",
+                    foreignField: "_id",
+                    localField: "nodeActionId",
+                    as: "nodeAction"
+                }
+            }, {
+                $unwind: {
+                    path: "$nodeAction",
+                    preserveNullAndEmptyArrays: true
+                }
+            }, {
+                $lookup: {
+                    from: "credentials",
+                    foreignField: "_id",
+                    localField: "credentialId",
+                    as: "credential",
+                    pipeline: [{
+                        $lookup: {
+                            from: "credentialforms",
+                            foreignField: "_id",
+                            localField: "credentialFormId",
+                            as: "credentialForm"
+                        }
+                    }, {
+                        $unwind: {
+                            path: "$credentialForm",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    }]
+                }
+            }, {
+                $unwind: {
+                    path: "$credential",
+                    preserveNullAndEmptyArrays: true
+                }
+            }])
+
+            if (!node || node.length == 0) {
+                throw new Error('Node not found with given nodeId for telegram_send_message')
+            }
+            node = node[0]
+
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId,
+                workflowId: this.workflowId,
+                inData,
+                outData: {},
+                executeSuccess: true,
+                error: {}
+            })
+
+
+
+
+
+            // const bot_token = node.credential.data.bot_token
+
+            //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
+            const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+
+            if (!bot_token) {
+                throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
+            }
+
+            // let {chat_id,text}=node.data
+            //:TODO uncomment line above and remove line below
+            let chat_id = '940083925', text = 'Hello sir, this message is sent by n8n_clone using telegram_send_message node'
+
+
+            if (!chat_id || !text) {
+                console.log('chat_id or text not given for telegram_send_message node');
+                return;
+            }
+
+            chat_id = Mustache.render(chat_id, inData)
+            text = Mustache.render(text, inData)
+
+            const url = `https://api.telegram.org/bot${bot_token}/sendMessage`
+            const { data: response } = await axios.post(url, {
+                chat_id,
+                text,
+                parse_mode: "HTML"
+            })
+            console.log('EXECUTED TELEGRAM SEND MESSAGE --------------------------------------');
+
+            console.log('Message sent : ', response);
+            Object.assign(nodeInstance.outData, response)
+            await nodeInstance.save()
+            this.handleNextDependingNodeExecution(nodeId)
+        } catch (error) {
+            console.log('ERROR :: ', error);
+
+            try {
+                const existingNodeInstance = await NodeInstance.findOne({
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: new mongoose.Types.ObjectId(nodeIdStr)
+                })
+                if (existingNodeInstance) {
+                    existingNodeInstance.executeSuccess = false
+                    existingNodeInstance.error = error
+                    await existingNodeInstance?.save()
+                }
+            } catch (error) {
+
+            }
+            this.handleNextDependingNodeExecution(nodeIdStr)
         }
     }
 
@@ -228,51 +366,38 @@ export default class Executor {
      * 4.call resend function to send email
      * 5.call the handle_next_node_execution
      */
-    async gmail_send_email(nodeIdStr: string, inData: any) {
-        //creating the inData object with the help of all the prerequisiteNodes and maybe triggerId node that node 
+    async gmail_send_email(node: any, inData: any) {
         console.log('inside gmail_send_email');
 
         try {
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
-            let node = await Node.aggregate([
-                {
-                    $match: {
-                        _id: nodeId
-                    }
-                }, {
-                    $lookup: {
-                        from: "credentials",
-                        foreignField: "_id",
-                        localField: "credentialId",
-                        as: "credential"
-                    }
-                }, {
-                    $unwind: {
-                        path: "$credential",
-                        preserveNullAndEmptyArrays: true
-                    }
-                }
-            ])
+            const nodeId = node._id
 
-            if (!node || node.length == 0) {
-                console.log('Cannot find node with given nodeId');
-                return;
-            }
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId,
+                workflowId: this.workflowId,
+                inData,
+                outData: {},
+                executeSuccess: true
+            })
 
-            node = node[0]
+            // let { to, from, subject, html } = node.data
+            //:TODO uncommment line above and remove lines below
 
-            const { to, from, subject, html } = node.data
+            let to = 'sohampirale20504@gmail.com'
+            let from = "Acme <onboarding@resend.dev>"
+            let subject = "This is email from n8n_clone"
+            let html = "Hey this is n8n_clone sending you email"
+
             if (!to || !from || !subject || !html) {
                 console.log('Received gmail_send_email node has insufficient data');
                 return;
             }
-            // else if (!node.credentialId) {
-            //     console.log('gmail_send_email has no attached credential with it,attach RESEND credential');
-            //     return;
-            // } else if (!node.credential) {
-            //     console.log('Credential not found with given credentialId of this node');
-            //     return;
-            // }
+
+            to = Mustache.render(to, inData)
+            from = Mustache.render(from, inData)
+            subject = Mustache.render(subject, inData)
+            html = Mustache.render(html, inData)
 
             // const RESEND_API_KEY = node.credential?.data.RESEND_API_KEY
 
@@ -287,17 +412,8 @@ export default class Executor {
 
             const email_response = await this.helper_resend_send_email(RESEND_API_KEY, to, from, subject, html)
 
-            const nodeInstance = await NodeInstance.create({
-                workflowInstanceId: this.workflowInstanceId,
-                nodeId,
-                workflowId: this.workflowId,
-                inData,
-                outData: {
-                    ...email_response
-                },
-                executeSuccess: true
-            })
-
+            Object.assign(nodeInstance.outData, email_response);
+            await nodeInstance.save()
 
             this.handleNextDependingNodeExecution(nodeId)
 
@@ -323,16 +439,21 @@ export default class Executor {
 
             const allDependingNodes = await Node.aggregate([
                 {
-                    $match:{
+                    $match: {
                         workflowId: this.workflowId,
                         prerequisiteNodes: nodeId
                     }
-                },{
-                    $lookup:{
-                        from:"nodeactions",
-                        foreignField:"_id",
-                        localField:'nodeActionId',
-                        as:"nodeAction"
+                }, {
+                    $lookup: {
+                        from: "nodeactions",
+                        foreignField: "_id",
+                        localField: 'nodeActionId',
+                        as: "nodeAction"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$nodeAction",
+                        preserveNullAndEmptyArrays: true
                     }
                 }
             ])
@@ -370,27 +491,11 @@ export default class Executor {
                             return;
                         }
 
-                        const nodeAction = await NodeAction.findOne({
-                            _id: allDependingNodes[i]?.nodeActionId
-                        })
-                        if (!nodeAction) {
-                            console.log('Node action not found of the node');
-                            return;
-                        }
-
-                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+                        this.callRespectiveHandler(allDependingNodes[i]?._id)
 
                     } else {
-                        const nodeAction = await NodeAction.findOne({
-                            _id: allDependingNodes[i]?.nodeActionId
-                        })
 
-                        if (!nodeAction) {
-                            console.log('Node action not found of the node');
-                            return;
-                        }
-
-                        this.callRespectiveHandler(allDependingNodes[i]?._id, nodeAction)
+                        this.callRespectiveHandler(allDependingNodes[i]?._id)
                     }
                 }
             }
@@ -399,25 +504,228 @@ export default class Executor {
         }
     }
 
-    async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId, nodeAction: any) {
+    async callRespectiveHandler(nodeIdStr: string | mongoose.Types.ObjectId) {
+        console.log('inside callRespectiveHandler');
+
+        let inData;
         try {
-            if (!nodeAction) {
-                console.log('nodeAction not received of that node');
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            let node = await Node.aggregate([
+                {
+                    $match: {
+                        _id: nodeId
+                    }
+                }, {
+                    $lookup: {
+                        from: "nodeactions",
+                        foreignField: "_id",
+                        localField: "nodeActionId",
+                        as: "nodeAction"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$nodeAction",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }, {
+                    $lookup: {
+                        from: "credential",
+                        foreignField: "_id",
+                        localField: "credentialId",
+                        as: "credential",
+                        pipeline: [
+                            {
+                                $lookup: {
+                                    from: "credentialforms",
+                                    foreignField: "_id",
+                                    localField: "credentialFormId",
+                                    as: 'credentialForm'
+                                }
+                            }, {
+                                $unwind: {
+                                    path: "$credentialForm",
+                                    preserveNullAndEmptyArrays: true
+                                }
+                            }
+                        ]
+                    }
+                }, {
+                    $unwind: {
+                        path: "$credential",
+                        preserveNullAndEmptyArrays: true
+                    }
+                },
+            ])
+
+            if (!node || node.length == 0) {
+                console.log('node not found with given nodeIdStr inside callRespectiveHandler,returning...');
                 return;
             }
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
-            const nodeActionName = nodeAction.name
-            if (nodeActionName == 'gmail_send_email') {
-                const inData = await this.inDataProducer(nodeId);
-                console.log('inData received is : ', inData);
-                this.gmail_send_email(nodeId, inData)
-            } else if (nodeActionName == 'telegram_send_message') {
-                const inData = await this.inDataProducer(nodeId)
-                this.telegram_send_message(nodeId, inData)
-            }
-        } catch (error) {
-            console.log('ERROR :: callRespectiveHandler : ', error);
+            node = node[0]
 
+            if (!node.nodeAction) {
+                console.log('nodeAction not found for the nodeId given in callRespectiveHandler,returning...');
+                return;
+            }
+
+            const nodeActionName = node.nodeAction?.name
+            inData = await this.inDataProducer(nodeId)
+
+            //:TODO uncomment few checks in each handler selection that are commented out until frontend is made
+            console.log('nodeActionName : ', nodeActionName);
+
+            if (nodeActionName == 'gmail_send_email') {
+                //checks of gmail_send_email
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('gmail_send_email node is currently not availaible');
+                }
+                // else if (!node.credential) {
+                //     console.log('Credential not attached for the gmail_send_email node');
+                //     throw new Error()
+                // } else if (!node.credential.credentialForm) {
+                //     console.log('CredentialForm not found for the credential attached to gmail_send_email');
+                //     throw new Error()
+                // } else if (node.credential.credentialForm.name != 'gmail') {
+                //     console.log('Credential Form of the attached credential of gmail_send_email node is not gmail credential');
+                //     throw new Error()
+                // }
+
+                //:TODO(optional maybe) can also check for the {to,from,html,subject} are given in the node.data here
+                this.gmail_send_email(node, inData)
+            } else if (nodeActionName == 'telegram_send_message') {
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('Telegram_send_message node is currently not availaible')
+                }
+                // else if (!node.credential) {
+                //     console.log('Credential not attached for the telegram_send_message node');
+                //     throw new Error()
+                // } else if (!node.credential.credentialForm) {
+                //     console.log('CredentialForm not foud for the credential attached to telegram_send_message');
+                //     throw new Error()
+                // } else if (node.credential.credentialForm.name != 'telegram') {
+                //     console.log('Credential Form of the attached credential is not telegram credential');
+                //     throw new Error()
+                // }
+
+                this.telegram_send_message(node, inData)
+            } else if (nodeActionName == 'aiNode') {
+                if (!node.nodeAction.publicallyAvailaible) {
+                    throw new Error('aiNode action currently unavailaible');
+
+                }
+                // else if (!node.data?.userQuery) {
+                //     throw new Error('userQuery not found for the aiNode created');
+                // }
+                //:TODO uncomment this after completing frontend and simple BE logic 
+
+                let attachedLLM = await LLM.aggregate([
+                    {
+                        $match: {
+                            workflowId: this.workflowId,
+                            aiNodeId: node._id
+                        }
+                    }, {
+                        $lookup: {
+                            from: "credentials",
+                            foreignField: "_id",
+                            localField: "credentialId",
+                            as: "credential",
+                            pipeline: [
+                                {
+                                    $lookup: {
+                                        from: "credentialforms",
+                                        foreignField: "_id",
+                                        localField: "credentialFormId",
+                                        as: "credentialForm"
+                                    }
+                                }, {
+                                    $unwind: {
+                                        path: "$credentialForm",
+                                        preserveNullAndEmptyArrays: true
+                                    }
+                                }
+                            ]
+                        }
+                    }, {
+                        $unwind: {
+                            path: "$credential",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    }
+                ])
+
+                if (!attachedLLM || attachedLLM.length == 0) {
+                    throw new Error('No attached llm foud for the AI Node');
+
+                }
+
+                attachedLLM = attachedLLM[0]
+
+                //:TODO uncomment this after completing frontend and simple BE logic 
+                // if (!attachedLLM.credential) {
+                //     throw new Error('No credential found for the attached llm');
+
+                // } else if (!attachedLLM.credential.credentialForm) {
+                //     throw new Error('No credential form found for the attached credential to llm');
+
+                // } else if (attachedLLM.credential.credentialForm.type != 'llm') {
+                //     throw new Error('Credential attached to the LLM is not of LLM type,incorrect credential chosen');
+                // }
+
+                node.llm = attachedLLM;
+                //Leaving the check of API_KEY or whatever requiredField that is needed for the credentialForm to be checked at aiNodeHandler
+
+                const attachedTools = await Tool.aggregate([{
+                    $match: {
+                        workflowId: this.workflowId,
+                        aiNodeId: node._id
+                    }
+                }, {
+                    $lookup: {
+                        from: "toolforms",
+                        foreignField: "_id",
+                        localField: "toolFormId",
+                        as: "toolForm"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$toolForm",
+                        preserveNullAndEmptyArrays: true
+                    }
+                }
+                ])
+
+                if (!attachedTools || attachedTools.length == 0) {
+                    console.log('No attached tools found for aiNode, allowing it for this moment');
+                }
+
+                //in this we can iterate through each attachedTool.toolForm and it does not exist - throw requested tool does not have toolForm associated with it 
+                node.tools = attachedTools
+                this.aiNode(node, inData)
+                return;
+            } else {
+                console.log('node valid nodeActionName found : ', nodeActionName);
+            }
+
+            return;
+        } catch (error) {
+            console.log('ERROR : callRespectiveHandler : ', error);
+
+            try {
+                const nodeInstance = await NodeInstance.create({
+                    workflowInstanceId: this.workflowInstanceId,
+                    nodeId: new mongoose.Types.ObjectId(nodeIdStr),
+                    workflowId: this.workflowId,
+                    inData: inData ?? {},
+                    outData: {},
+                    executeSuccess: false,
+                    error: {}
+                })
+
+            } catch (error) {
+
+            }
+            this.handleNextDependingNodeExecution(nodeIdStr)
         }
     }
 
@@ -439,4 +747,237 @@ export default class Executor {
             throw error;
         }
     }
+
+    /** Working of aiNode
+     * since all checks are done we can just work with the node 90%
+     * 1.retrive {userQuery} from node.data and render it using Mustache using inData
+     * 2.find api key node.credential.credentialForm.name and based on the llm user has selected retrive the API_KEY 
+     * 3.if api key not foud - throw api key not found for the attached credential
+     * 4.create the required llm using the api key
+     * Creating tools 
+     * 5.iterate through all node.tools and based on tools[i].toolForm.name fetch the funciton from toolFunctionMap 
+     *  if function not found from toolFunctionMap fetch it from user defined tools - future feature not yet created
+     * 6.create the tool from each retrive function from toolFunctionMap that will be used to give to llm
+     * 7.await invoke the LLM
+     * 8.create the instance with outData and inData as well
+     */
+
+    async aiNode(node: any, inData: any) {
+        console.log('inside aiNode handler');
+
+        try {
+            const credentialFormName = node.llm?.credential?.credentialForm?.name
+            const model = node.llm?.data?.model
+            let llm;
+
+            if (credentialFormName == 'gemini') {
+
+                llm = new ChatGoogleGenerativeAI({
+                    model: model ?? "gemini-2.0",
+                    apiKey: node.llm.credential.data.API_KEY,
+                    temperature: 0.7
+                });
+            }
+
+            //TODO remove this global llm creator after frontend completed
+            llm = new ChatGoogleGenerativeAI({
+                model: "gemini-2.0-flash",
+                apiKey: process.env.GOOGLE_API_KEY,
+                temperature: 0.7
+            });
+
+            const agentTools: any = [];
+
+            const tools = node.tools;
+            for (let i = 0; i < tools.length; i++) {
+                const toolFormName = tools[i]?.toolForm?.name
+                console.log('toolFormName : ', toolFormName);
+
+                const toolFn = toolFunctionMap.get(toolFormName)
+                if (toolFn) {
+                    console.log('description : ', tools[i].toolForm.description);
+
+                    const tool = new DynamicTool({
+                        name: toolFormName,
+                        description: tools[i]?.toolForm?.description,
+                        func: toolFn
+                    })
+                    agentTools.push(tool)
+                }
+            }
+
+            const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
+            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed
+            `;
+
+            // const { userQuery } = node.data
+            // const userQuery = `what is current weather of Mumbai and chennai?`
+            // const userQuery = `search for 100xDevs on the wikipedia and return what you get and use tools given to you`
+            // const userQuery = `What is meaning of Software developement `
+            // const userQuery = `I am curious about what exactly is AI and hwo it works`
+            // const userQuery = `Can you tell me currentl weather of Mumbai and SanFranisco `
+            // const userQuery = `I want to know about what is 100xSchool in India,fetch from inteernet if you dont know`
+            const userQuery = `what is 2 +2`
+
+            const agent = createReactAgent({
+                llm,
+                tools: agentTools,
+                messageModifier: systemPrompt,  // Adds system prompt to messages
+            });
+
+            const result = await agent.invoke({
+                messages: [
+                    { role: "user", content: userQuery }
+                ],
+            });
+            console.log('result : ');
+            console.log(result);
+
+
+            const llmRespponse = result.messages[result.messages.length - 1].content;
+            console.log("Final LLM Response:", llmRespponse);
+
+            //TODO : uncomment these lines below when frontend completed and remove the hardcoded jsonSchema
+
+            // if (node.jsonRequired) {
+            //     //in aiNode user requires certain form of json
+            //     const { jsonSchema } = node.data
+            //     if (jsonSchema) {
+            const jsonSchema = {
+                "technicalQuestion": "Boolean (Weather question from user was technical or not)",
+                "likes": "Array of strings (Guess all the topics the user might be interested in based on the whole conversation)"
+            }
+            const parsedJson = await this.helper_jsonParser(result, jsonSchema, llm, userQuery)
+            // } else {
+            // console.log('jsonRequired selected for aiNode but jsonSchema not defined');
+            // }
+            // }
+
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId: node._id,
+                workflowId: this.workflowId,
+                inData,
+                outData: {
+                    ...inData,
+                    llmRespponse,
+                    ...parsedJson
+                }
+            })
+
+            this.handleNextDependingNodeExecution(node._id)
+        } catch (error) {
+            console.log('ERROR : aiNode : ', error);
+
+            this.handleNextDependingNodeExecution(node._id)
+        }
+    }
+
+    async helper_jsonParser(aiAgentResult: any, jsonSchema: any, llm: any, userQuery: string) {
+        try {
+
+            const extractionPrompt = `
+                You are a JSON extractor. 
+                Given the user query, final LLM response, and tool call metadata, 
+                produce ONLY valid JSON with this schema:
+        
+                ${JSON.stringify(jsonSchema)}
+                Return ONLY JSON IN STRINGIFIED FORMAT THAT I CAN JSON.parse on it, no explanation.
+                `;
+
+            const extractionResult = await llm.invoke([
+                { role: "system", content: extractionPrompt },
+                {
+                    role: "user", content: JSON.stringify(
+                        {
+                            userQuery,
+                            aiAgentResult,
+                        },
+                        null,
+                        2
+                    ),
+                },
+            ])
+            console.log('extractionResult : ', extractionResult);
+
+            const rawContent = extractionResult.content;
+            const cleaned = rawContent.replace(/```json|```/g, "").trim();
+
+            const llmExtractionResponse = cleaned
+            console.log('llmExtratcionResponse : ', llmExtractionResponse);
+            const parsedJson = JSON.parse(llmExtractionResponse);
+            console.log('parsedJson : ', parsedJson);
+            return parsedJson
+        } catch (error) {
+            console.log('ERROR : helper_jsonParser : ', error);
+            return {}
+        }
+    }
+
+    //adding all the tool functions that are needed in toolFunctionMap
+    async fetchWeatherFn(cityName: string) {
+        const weather = (24 + (Math.random() * 10));
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e97"),
+            workflowId: this.workflowId,
+            inData: {
+                cityName
+            },
+            outData: {
+                weather
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+        return weather
+    }
+
+    async serpApiFn(query: string) {
+        const serpApiResponse = {
+            message: `data fetched by serpApi for query : ${query},it is a school created by harkirat singh sir for enginnering students`
+        }
+
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e95"),
+            workflowId: this.workflowId,
+            inData: {
+                query
+            },
+            outData: {
+                serpApiResponse
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+
+        return serpApiResponse
+    }
+
+    async wikipediaFn(topicName: string) { 
+        const wikipediaResponse = `data from wikipedia about topic ${topicName},it is a school for enginnering students satrted by great developer` 
+
+        const toolInstance = await ToolInstance.create({
+            workflowInstanceId: this.workflowInstanceId,
+            toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e96"),
+            workflowId: this.workflowId,
+            inData: {
+                topicName
+            },
+            outData: {
+                wikipediaResponse
+            },
+            executeSuccess: true,
+            error: {},
+            waiting: false,
+            waitingIdentifier: null
+        })
+        return wikipediaResponse
+    }
+
 }

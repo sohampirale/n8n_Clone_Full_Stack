@@ -5,14 +5,20 @@ import { TriggerAction } from "../models/trigger.model.js";
 import {z} from 'zod'
 
 export async function createTriggerActions() {
+  // const triggerActionData = [{
+  //   name: `trigger:webhook`,
+  //   queueName: `trigger:webhook`,
+  //   icon: `https://www.svix.com/resources/assets/images/color-webhook-240-1deccb0e365ff4ea493396ad28638fb7.png`
+  // }, {
+  //   name: `trigger:manual_click`,
+  //   queueName: `trigger:manual_click`,
+  //   icon: `https://media.gettyimages.com/id/1974389824/vector/cursor-icon-click.jpg?s=2048x2048&w=gi&k=20&c=Vds_aGP00pVqkX58Ye5WmgsepMHj6JH_8VJziB2t3YI=`
+  // }]
+
   const triggerActionData = [{
-    name: `trigger:webhook`,
-    queueName: `trigger:webhook`,
-    icon: `https://www.svix.com/resources/assets/images/color-webhook-240-1deccb0e365ff4ea493396ad28638fb7.png`
-  }, {
-    name: `trigger:manual_click`,
-    queueName: `trigger:manual_click`,
-    icon: `https://media.gettyimages.com/id/1974389824/vector/cursor-icon-click.jpg?s=2048x2048&w=gi&k=20&c=Vds_aGP00pVqkX58Ye5WmgsepMHj6JH_8VJziB2t3YI=`
+    name: `trigger:telegram_on_message`,
+    queueName: `trigger:telegram_on_message`,
+    icon: `https://imgs.search.brave.com/WFAdu672ZAB4qo1sO_7A6W5dSfBFwTefFVYh8IomlTc/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9jZG4t/aWNvbnMtcG5nLmZy/ZWVwaWsuY29tLzI1/Ni85NjQzLzk2NDM2/NTcucG5nP3NlbXQ9/YWlzX3doaXRlX2xh/YmVs`
   }]
   try {
     await TriggerAction.insertMany(triggerActionData)
@@ -68,7 +74,7 @@ export async function createCredentialForms() {
     publicallyAvailaible:true,
   }, {
     name: `telegram`,
-    requiredFields:["API_KEY"],
+    requiredFields:["bot_token"],
     publicallyAvailaible:true,
   }]
 

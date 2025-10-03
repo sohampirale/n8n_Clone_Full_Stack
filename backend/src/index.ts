@@ -19,7 +19,7 @@ app.use(cookieParser())
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: process.env.FRONTEND_URL?.trim(),
   credentials: true,
 }));
 
@@ -36,6 +36,22 @@ app.use("/api/v1/tool", toolsRouter)
 app.use("/api/v1/execution", executionInstanceRouter)
 
 startServer(app)
+
+//TODO everytime in credentialController a credential is created for telegram we set telegram webhook url using the bot_token user gives us from frontend
+
+// async function setWebhook() {
+// //  FOR THE EACH INDIVIDUAL
+//   const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/soham3/telegram_webhook`
+
+//   // const WEBHOOK_URL=`${process.env.BACKEND_URL}/api/v1/execution/telegram_webhook`
+//   const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook?url=${WEBHOOK_URL}`;
+//   const res = await fetch(url);
+//   const data = await res.json();
+//   console.log('Webhook set:', data);
+// }
+
+
+// setWebhook()
 
 setTimeout(() => {
   //used seed functions here as needed 

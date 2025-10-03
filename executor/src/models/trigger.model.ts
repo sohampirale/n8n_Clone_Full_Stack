@@ -1,89 +1,94 @@
-import mongoose,{Schema} from "mongoose"
-const ObjectId=Schema.Types.ObjectId;
+import mongoose, { Schema } from "mongoose"
+const ObjectId = Schema.Types.ObjectId;
 
-const triggerActionSchema=new Schema({
-  name:{
-    type:String,
-    required:true,
-    unique:true
+const triggerActionSchema = new Schema({
+  name: {
+    type: String,
+    required: true,
+    unique: true
   },
-  queueName:{
-    type:String,
-    required:true
+  queueName: {
+    type: String,
+    required: true
   },
-  icon:{
-    type:String,
-    default:"https://getumbrel.github.io/umbrel-apps-gallery/n8n/icon.svg"
+  icon: {
+    type: String,
+    default: "https://getumbrel.github.io/umbrel-apps-gallery/n8n/icon.svg"
   },
-  publicallyAvailaible:{
-    type:Boolean,
-    default:true
+  publicallyAvailaible: {
+    type: Boolean,
+    default: true
   }
-},{
-  timestamps:true
+}, {
+  timestamps: true
 })
 
-const triggerSchema=new Schema({
-  triggerActionId:{
-    type:ObjectId,
-    ref:"TriggerAction",
-    required:true
+const triggerSchema = new Schema({
+  triggerActionId: {
+    type: ObjectId,
+    ref: "TriggerAction",
+    required: true
   },
-  workflowId:{
-    type:ObjectId,
-    ref:"Workflow",
-    required:true
+  workflowId: {
+    type: ObjectId,
+    ref: "Workflow",
+    required: true
   },
-  data:{
-    type:Schema.Types.Mixed,
-    default:{}
+  owner: {
+    type: ObjectId,
+    ref: "User",
+    required: true
   },
-},{
-  timestamps:true
+  data: {
+    type: Schema.Types.Mixed,
+    default: {}
+  },
+}, {
+  timestamps: true
 })
 
-const triggerInstanceSchema= new Schema({
-  workflowInstanceId:{
-    type:ObjectId,
-    ref:"WorkflowInstance",
-    required:true
+const triggerInstanceSchema = new Schema({
+  workflowInstanceId: {
+    type: ObjectId,
+    ref: "WorkflowInstance",
+    required: true
   },
-  triggerId:{
-    type:ObjectId,
-    ref:"Trigger",
-    required:true
+  triggerId: {
+    type: ObjectId,
+    ref: "Trigger",
+    required: true
   },
-  workflowId:{
-    type:ObjectId,
-    ref:"Workflow",
-    required:true
+  workflowId: {
+    type: ObjectId,
+    ref: "Workflow",
+    required: true
   },
-  owner:{
-    type:ObjectId,
-    ref:"User",
-    required:true
+  owner: {
+    type: ObjectId,
+    ref: "User",
+    required: true
   },
-  inData:{
-    type:Schema.Types.Mixed,
-    default:{}
+  inData: {
+    type: Schema.Types.Mixed,
+    default: {}
   },
-  outData:{
-    type:Schema.Types.Mixed,
-    default:{}
+  outData: {
+    type: Schema.Types.Mixed,
+    default: {}
   },
-  executeSuccess:{
-    type:Boolean,
-    default:true
+  executeSuccess: {
+    type: Boolean,
+    default: true
   },
-  error:{
-    type:Schema.Types.Mixed,
-    default:undefined
+  error: {
+    type: Schema.Types.Mixed,
+    default: undefined
   }
-},{
-  timestamps:true
+}, {
+  timestamps: true
 })
 
-export const TriggerAction = mongoose.model("TriggerAction",triggerActionSchema)
-export const Trigger = mongoose.model("Trigger",triggerSchema)
-export const TriggerInstance = mongoose.model("TriggerInstance",triggerInstanceSchema)
+export const TriggerAction = mongoose.model("TriggerAction", triggerActionSchema)
+export const Trigger = mongoose.model("Trigger", triggerSchema)
+export const TriggerInstance = mongoose.model("TriggerInstance", triggerInstanceSchema)
 

@@ -34,6 +34,11 @@ const triggerSchema=new Schema({
     ref:"Workflow",
     required:true
   },
+  owner:{
+    type:ObjectId,
+    ref:"User",
+    required:true
+  },
   data:{
     type:Schema.Types.Mixed,
     default:{}
