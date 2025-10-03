@@ -451,10 +451,12 @@ export async function telegramWebhook(req: Request, res: Response) {
             await startNewTelegramConversation(userId,data,redis,chat_id)
         } else {
             //is there any nodeInstance thats waiting for the message with this waitingIdentifier : chat_id
+            console.log('userId for searching nodeInstance is : ',userId);
+            
             const nodeInstance = await NodeInstance.findOne({
                 owner: userId,
                 waiting: true,
-                waitingIdetifier: chat_id
+                waitingIdentifier: chat_id
             }).sort({ createdAt: 1 });
 
             if (nodeInstance) {
@@ -469,6 +471,9 @@ export async function telegramWebhook(req: Request, res: Response) {
                 }
                 await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
             } else {
+                console.log('no nodeInstance ');
+                
+                //68dfec3e03b29c6369baffe6
                 
                 //check if any tool is waiting with waitingIdentifier:chat_id
                 const toolInstance = await ToolInstance.findOne({

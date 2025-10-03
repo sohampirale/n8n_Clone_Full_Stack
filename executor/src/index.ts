@@ -14,7 +14,7 @@ const executorsMap=new Map()
 async function startWorker() {
     await connectDB()
     executionWorker()
-    telegramActionOnMessageWorker()
+    telegramSendMessageAndWaitToolWorker()
     telegramToolOnMessageWorker()
 }
 
@@ -37,7 +37,10 @@ async function executionWorker() {
                 if(!workflowInstanceId)continue;
 
                 const executor = new Executor(startExecutionObject)
+
                 executorsMap.set(workflowInstanceId.toString(),executor)
+                console.log('updated executorsMap : ',executorsMap);
+                
                 executor.startExecution()
             } catch (error) {
                 console.log('error : ', error);
@@ -50,7 +53,7 @@ async function executionWorker() {
     }
 }
 
-async function telegramActionOnMessageWorker(){
+async function telegramSendMessageAndWaitToolWorker(){
     try {
         const redis =createClient({
             url:process.env.REDIS_URI!
@@ -72,6 +75,10 @@ async function telegramActionOnMessageWorker(){
                     console.log('Insufficient data provided data : ',data);
                     continue;
                 }
+                console.log('workflowInstanceId :',workflowInstanceId);
+                console.log('executorsMap : ',executorsMap);
+                
+                
                 const executor = executorsMap.get(workflowInstanceId.toString())
                 if(!executor){
                     console.log('no executor object found for given workflowInstanceId in the executor:action:telegram_on_message');
@@ -82,7 +89,7 @@ async function telegramActionOnMessageWorker(){
                 executor.resume_telegram_send_message_and_wait_for_response(nodeInstanceId,telegramWebhookData)
                 
             }catch(error){
-                console.log('ERROR :  telegramActionOnMessageWorker');
+                console.log('ERROR :  telegramSendMessageAndWaitToolWorker : ',error);
                 
             }
         }

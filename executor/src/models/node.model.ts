@@ -75,6 +75,11 @@ const nodeInstanceSchema= new Schema({
     ref:"Node",
     required:true
   },
+  owner:{
+    type:ObjectId,
+    ref:"User",
+    required:true
+  },
   workflowId:{
     type:ObjectId,
     ref:"Workflow",

@@ -18,6 +18,7 @@ import { createToolCallingAgent, AgentExecutor } from "@langchain/core/agents";
 import { DynamicTool } from "@langchain/core/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
+import type { Node } from "@langchain/core/runnables/graph";
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -314,60 +315,62 @@ export default class Executor {
     async start_telegram_send_message_and_wait_for_response(node: any, inData: any) {
         try {
 
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            // const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
 
-            let node = await Node.aggregate([{
-                $match: {
-                    _id: nodeId
-                }
-            }, {
-                $lookup: {
-                    from: "nodeactions",
-                    foreignField: "_id",
-                    localField: "nodeActionId",
-                    as: "nodeAction"
-                }
-            }, {
-                $unwind: {
-                    path: "$nodeAction",
-                    preserveNullAndEmptyArrays: true
-                }
-            }, {
-                $lookup: {
-                    from: "credentials",
-                    foreignField: "_id",
-                    localField: "credentialId",
-                    as: "credential",
-                    pipeline: [{
-                        $lookup: {
-                            from: "credentialforms",
-                            foreignField: "_id",
-                            localField: "credentialFormId",
-                            as: "credentialForm"
-                        }
-                    }, {
-                        $unwind: {
-                            path: "$credentialForm",
-                            preserveNullAndEmptyArrays: true
-                        }
-                    }]
-                }
-            }, {
-                $unwind: {
-                    path: "$credential",
-                    preserveNullAndEmptyArrays: true
-                }
-            }])
+            // let node = await Node.aggregate([{
+            //     $match: {
+            //         _id: nodeId
+            //     }
+            // }, {
+            //     $lookup: {
+            //         from: "nodeactions",
+            //         foreignField: "_id",
+            //         localField: "nodeActionId",
+            //         as: "nodeAction"
+            //     }
+            // }, {
+            //     $unwind: {
+            //         path: "$nodeAction",
+            //         preserveNullAndEmptyArrays: true
+            //     }
+            // }, {
+            //     $lookup: {
+            //         from: "credentials",
+            //         foreignField: "_id",
+            //         localField: "credentialId",
+            //         as: "credential",
+            //         pipeline: [{
+            //             $lookup: {
+            //                 from: "credentialforms",
+            //                 foreignField: "_id",
+            //                 localField: "credentialFormId",
+            //                 as: "credentialForm"
+            //             }
+            //         }, {
+            //             $unwind: {
+            //                 path: "$credentialForm",
+            //                 preserveNullAndEmptyArrays: true
+            //             }
+            //         }]
+            //     }
+            // }, {
+            //     $unwind: {
+            //         path: "$credential",
+            //         preserveNullAndEmptyArrays: true
+            //     }
+            // }])
 
-            if (!node || node.length == 0) {
-                throw new Error('Node not found with given nodeId for telegram_send_message')
-            }
-            node = node[0]
+            // if (!node || node.length == 0) {
+            //     throw new Error('Node not found with given nodeId for telegram_send_message')
+            // }
+            // node = node[0]
 
             // const bot_token = node.credential.data.bot_token
 
             //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
             const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+
+            const nodeId=node._id
 
             if (!bot_token) {
                 throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
@@ -400,10 +403,11 @@ export default class Executor {
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
                 nodeId,
+                owner:this.owner,
                 workflowId: this.workflowId,
                 inData,
                 outData: {
-                    sentMessage: response
+                    sentMessage: text
                 },
                 executeSuccess: true,
                 error: {},
@@ -411,6 +415,8 @@ export default class Executor {
                 waitingIdentifier: chat_id
             })
 
+            console.log('nodeInstance created : ',nodeInstance);
+            
             Object.assign(nodeInstance.outData, response)
             console.log('stopping start_telegram_send_message_and_wait_for_response');
             //abort here and resume_telegram_send_message_and_wait_for_response
@@ -438,11 +444,17 @@ export default class Executor {
             const text = telegramWebhookData?.message?.text;
             if(!text){
                 console.log('Text not found in resume_telegram_send_message_and_wait_for_response handler');
-                return;
-            }
+                return; 
+            } 
+            console.log('Text received from user : ',text);
+            console.log('old outData : ',nodeInstance.outData);
+            
             nodeInstance.outData.receivedMessage = text
             nodeInstance.waiting = false;
             nodeInstance.waitingIdentifier = ""
+            console.log('updated outData : ',nodeInstance.outData);
+
+
             await nodeInstance.save()
             this.handleNextDependingNodeExecution(nodeInstanceId)
         } catch (error) {

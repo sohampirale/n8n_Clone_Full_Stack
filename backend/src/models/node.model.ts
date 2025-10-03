@@ -80,6 +80,11 @@ const nodeInstanceSchema= new Schema({
     ref:"Workflow",
     required:true
   },
+  owner:{
+    type:ObjectId,
+    ref:"User",
+    required:true
+  },
   inData:{
     type:Schema.Types.Mixed,
     default:{}
