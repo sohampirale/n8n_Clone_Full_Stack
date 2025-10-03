@@ -54,7 +54,7 @@ startServer(app)
 // setWebhook()
 
 setTimeout(() => {
-  //used seed functions here as needed 
+  //use seed functions here as needed 
   // createNodeActions()
   // createTriggerAchttps://i.pinimg.com/736x/29/52/b7/2952b7f67446895f8f11c3afacc89edc.jpgtions()
   // createCredentialForms()

@@ -281,7 +281,7 @@ export async function executeWebhookTrigger(req: Request, res: Response) {
     }
 }
 
-async function startNewTelegramConversation(userId:mongoose.Schema.Types.ObjectId,data:any,redis:any,chat_id:string) {
+async function startNewTelegramConversation(userId: mongoose.Schema.Types.ObjectId, data: any, redis: any, chat_id: string) {
     const allTriggers = await Trigger.aggregate([
         {
             $match: {
@@ -334,7 +334,7 @@ async function startNewTelegramConversation(userId:mongoose.Schema.Types.ObjectI
                     workflowId: allTriggers[i].workflowId,
                     owner: userId,
                     chat_id,
-                    telegramWebhookData:data
+                    telegramWebhookData: data
                 }
 
                 await redis.lPush("executor:trigger", JSON.stringify(executionStartObject))
@@ -366,8 +366,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                 message: 'No data received'
             })
         }
-        console.log('telegramWebhookData : ',data);
-        
+        console.log('telegramWebhookData : ', data);
+
 
         const text = data.message.text
         const chat_id = data.message.chat?.id
@@ -395,8 +395,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                 message: 'User not found with provided username in params'
             })
         }
-        
-        const userId:mongoose.Schema.Types.ObjectId = user._id
+
+        const userId: mongoose.Schema.Types.ObjectId = user._id
 
         let credential = await Credential.aggregate([
             {
@@ -448,33 +448,41 @@ export async function telegramWebhook(req: Request, res: Response) {
         if (text == '/start') {
             //check if any workflow exists of user user._id which has this telegram_on_message as trigger
             res.status(200).json({})
-            await startNewTelegramConversation(userId,data,redis,chat_id)
+            await startNewTelegramConversation(userId, data, redis, chat_id)
         } else {
             //is there any nodeInstance thats waiting for the message with this waitingIdentifier : chat_id
-            console.log('userId for searching nodeInstance is : ',userId);
-            
-            const nodeInstance = await NodeInstance.findOne({
+            console.log('userId for searching nodeInstance is : ', userId);
+
+            const nodeInstances = await NodeInstance.find({
                 owner: userId,
                 waiting: true,
                 waitingIdentifier: chat_id
             }).sort({ createdAt: 1 });
-
-            if (nodeInstance) {
+            console.log('no of waiting nodeInstances found : ',nodeInstances.length);
+            
+            if (nodeInstances && nodeInstances.length != 0) {
                 res.status(200).json({})
-                console.log('There is one nodeInstance of trigger:telegram_on_message waiting on chat_id : ', chat_id);
-                const resumeWorkflowObj = {
-                    workflowInstanceId: nodeInstance.workflowInstanceId,
-                    nodeId: nodeInstance.nodeId,
-                    nodeInstanceId: nodeInstance._id,
-                    chat_id,
-                    telegramWebhookData:data
+
+                for (let i = 0; i < nodeInstances.length; i++) {
+                    const nodeInstance = nodeInstances[i]
+
+                    const resumeWorkflowObj = {
+                        workflowInstanceId: nodeInstance.workflowInstanceId,
+                        nodeId: nodeInstance.nodeId,
+                        nodeInstanceId: nodeInstance._id,
+                        chat_id,
+                        telegramWebhookData: data
+                    }
+                    await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
+                    console.log('Pushed nodeInstance no : ',(i+1),' to redis queue');
+                    
                 }
-                await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
+                return;
             } else {
                 console.log('no nodeInstance ');
-                
+
                 //68dfec3e03b29c6369baffe6
-                
+
                 //check if any tool is waiting with waitingIdentifier:chat_id
                 const toolInstance = await ToolInstance.findOne({
                     owner: userId,
@@ -483,7 +491,7 @@ export async function telegramWebhook(req: Request, res: Response) {
                 }).sort({ createClient: 1 })
 
                 if (toolInstance) {
-                     res.status(200).json({})
+                    res.status(200).json({})
 
                     console.log('There is one toolInstance of tool:telegram_on_message waiting on chat_id : ', chat_id);
                     console.log('toolInstance : ', toolInstance);
@@ -492,14 +500,14 @@ export async function telegramWebhook(req: Request, res: Response) {
                         toolInstanceId: toolInstance._id,
                         aiNodeInstanceId: toolInstance.aiNodeInstanceId,
                         chat_id,
-                        telegramWebhookData:data
+                        telegramWebhookData: data
                     }
                     await redis.lPush("executor:tool:telegram_on_message", JSON.stringify(resumeToolObj))
                 } else {
                     res.status(200).json({})
 
                     console.log('No node or tool is waiting on this chat_id so lets trigger any workflows as if the text is /start');
-                    await startNewTelegramConversation(userId,data,redis,chat_id)
+                    await startNewTelegramConversation(userId, data, redis, chat_id)
                 }
             }
         }

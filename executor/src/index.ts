@@ -78,12 +78,12 @@ async function telegramSendMessageAndWaitToolWorker(){
                 console.log('workflowInstanceId :',workflowInstanceId);
                 console.log('executorsMap : ',executorsMap);
                 
-                
-                const executor = executorsMap.get(workflowInstanceId.toString())
-                if(!executor){
+                if(!executorsMap.has(workflowInstanceId.toString())){
                     console.log('no executor object found for given workflowInstanceId in the executor:action:telegram_on_message');
                     continue;
                 }
+
+                const executor = executorsMap.get(workflowInstanceId.toString())
 
                 console.log('-------RESUMED THE WAITING telegram_send_message_and_wait NODE--------');
                 executor.resume_telegram_send_message_and_wait_for_response(nodeInstanceId,telegramWebhookData)
@@ -108,7 +108,7 @@ async function telegramToolOnMessageWorker(){
         await redis.connect()
         while(1){
             try {
-                const {element}:{element:any}= await redis.brPop("executor:action:telegram_on_message",0)
+                const {element}:{element:any}= await redis.brPop("executor:tool:telegram_on_message",0)
 
                 const data = JSON.parse(element)
                 const {
@@ -131,7 +131,7 @@ async function telegramToolOnMessageWorker(){
                 executor.resume_telegram_on_message_node(nodeInstanceId)
                 
             }catch(error){
-                console.log('ERROR :  telegramActionOnMessageWorker');
+                console.log('ERROR :  telegramActionOnMessageWorker : ',error);
                 
             }
         }
