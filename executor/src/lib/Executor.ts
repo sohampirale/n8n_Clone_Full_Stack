@@ -4,7 +4,7 @@ import { Node, NodeInstance } from "../models/node.model";
 import { TriggerInstance } from "../models/trigger.model";
 import { Resend } from "resend"
 import Mustache from "mustache"
-import axios from "axios"
+import axios, { all } from "axios"
 import { LLM } from "../models/llm.model";
 import { Tool, ToolInstance } from "../models/tool.model";
 
@@ -95,7 +95,39 @@ export default class Executor {
                 $unwind: {
                     path: "$nodeAction"
                 }
-            }])
+            }, {
+                $lookup: {
+                    from: "credentials",
+                    foreignField: "_id",
+                    localField: "credentialId",
+                    as: "credential",
+                    pipeline: [
+                        {
+                            $lookup: {
+                                from: "credentialforms",
+                                foreignField: "_id",
+                                localField: "credentialFormId",
+                                as: "credentialForm"
+                            }
+                        },
+                        {
+                            $unwind: {
+                                path: "$credentialForm",
+                                preserveNullAndEmptyArrays: true
+                            }
+                        }
+                    ]
+
+
+                }
+            },
+            {
+                $unwind: {
+                    path: "$credential",
+                    preserveNullAndEmptyArrays: true
+                }
+            }
+            ])
 
             console.log('allSolelyDependentNodes : ', allSolelyDependentNodes);
 
@@ -110,10 +142,18 @@ export default class Executor {
                     this.telegram_send_message(allSolelyDependentNodes[i]._id)
                 } else if (nodeActionName == 'gmail_send_email') {
                     console.log('node instance to be started is : action:gmail_send_email');
-
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
                     this.gmail_send_email(allSolelyDependentNodes[i]._id, inData);
+                } else if (nodeActionName == 'telegram_send_message_and_wait_for_response') {
+                    // const node= await Node.aggregate()
+                    //all checks that are personal to the telegram_send_message_and_wait_for_response
+                    const node = allSolelyDependentNodes[i]
+                    
+
+                    console.log('node handler to be started is : telegram_send_message_and_wait_for_response');
+                    const inData = await this.inDataProducer(node._id)
+                    this.start_telegram_send_message_and_wait_for_response(node,inData)
                 }
             }
 
@@ -204,9 +244,6 @@ export default class Executor {
             })
 
 
-
-
-
             // const bot_token = node.credential.data.bot_token
 
             //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
@@ -258,6 +295,139 @@ export default class Executor {
 
             }
             this.handleNextDependingNodeExecution(nodeIdStr)
+        }
+    }
+
+    async start_telegram_send_message_and_wait_for_response(node: any, inData: any) {
+        try {
+
+            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+
+            let node = await Node.aggregate([{
+                $match: {
+                    _id: nodeId
+                }
+            }, {
+                $lookup: {
+                    from: "nodeactions",
+                    foreignField: "_id",
+                    localField: "nodeActionId",
+                    as: "nodeAction"
+                }
+            }, {
+                $unwind: {
+                    path: "$nodeAction",
+                    preserveNullAndEmptyArrays: true
+                }
+            }, {
+                $lookup: {
+                    from: "credentials",
+                    foreignField: "_id",
+                    localField: "credentialId",
+                    as: "credential",
+                    pipeline: [{
+                        $lookup: {
+                            from: "credentialforms",
+                            foreignField: "_id",
+                            localField: "credentialFormId",
+                            as: "credentialForm"
+                        }
+                    }, {
+                        $unwind: {
+                            path: "$credentialForm",
+                            preserveNullAndEmptyArrays: true
+                        }
+                    }]
+                }
+            }, {
+                $unwind: {
+                    path: "$credential",
+                    preserveNullAndEmptyArrays: true
+                }
+            }])
+
+            if (!node || node.length == 0) {
+                throw new Error('Node not found with given nodeId for telegram_send_message')
+            }
+            node = node[0]
+
+            // const bot_token = node.credential.data.bot_token
+
+            //:TODO remove the comment from above lines after completino fo frontend and remove the hardcoded line below this
+            const bot_token = process.env.TELEGRAM_BOT_TOKEN;
+
+            if (!bot_token) {
+                throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
+            }
+
+            // let {chat_id,text}=node.data
+            //:TODO uncomment line above and remove line below
+            let chat_id = '940083925',
+                text = 'This message is send by start_telegram_send_message_and_wait_for_response'
+
+
+            if (!chat_id || !text) {
+                console.log('chat_id or text not given for telegram_send_message node');
+                return;
+            }
+
+            chat_id = Mustache.render(chat_id, inData)
+            text = Mustache.render(text, inData)
+
+            const url = `https://api.telegram.org/bot${bot_token}/sendMessage`
+            const { data: response } = await axios.post(url, {
+                chat_id,
+                text,
+                parse_mode: "HTML"
+            })
+            console.log('EXECUTED TELEGRAM SEND MESSAGE --------------------------------------');
+
+            console.log('Message sent : ', response);
+
+            const nodeInstance = await NodeInstance.create({
+                workflowInstanceId: this.workflowInstanceId,
+                nodeId,
+                workflowId: this.workflowId,
+                inData,
+                outData: {
+                    sentMessage: response
+                },
+                executeSuccess: true,
+                error: {},
+                waiting: true,
+                waitingIdentifier: chat_id
+            })
+
+            Object.assign(nodeInstance.outData, response)
+            console.log('stopping start_telegram_send_message_and_wait_for_response');
+            //abort here and resume_telegram_send_message_and_wait_for_response
+        } catch (error) {
+            console.log('ERROR :: start_telegram_send_message_and_wait_for_response : ', error);
+        }
+    }
+
+    async resume_telegram_send_message_and_wait_for_response(nodeInstanceId: mongoose.Schema.Types.ObjectId, telegramWebhookData: { text: string }) {
+        try {
+            const nodeInstance = await NodeInstance.findOne({
+                _id: nodeInstanceId
+            })
+
+            if (!nodeInstance) {
+                console.log('nodeInstance not found with given nodeInstanceId');
+                return;
+            } else if (!nodeInstance.waiting) {
+                console.log('Requested nodeInstance is not in waiting state nodeInstance : ', nodeInstance);
+                return;
+            }
+
+            const { text } = telegramWebhookData;
+            nodeInstance.outData.receivedMessage = text
+            nodeInstance.waiting = false;
+            nodeInstance.waitingIdentifier = ""
+            await nodeInstance.save()
+            this.handleNextDependingNodeExecution(nodeInstance._id)
+        } catch (error) {
+
         }
     }
 
@@ -748,6 +918,8 @@ export default class Executor {
         }
     }
 
+
+
     /** Working of aiNode
      * since all checks are done we can just work with the node 90%
      * 1.retrive {userQuery} from node.data and render it using Mustache using inData
@@ -914,6 +1086,7 @@ export default class Executor {
         }
     }
 
+
     //adding all the tool functions that are needed in toolFunctionMap
     async fetchWeatherFn(cityName: string) {
         const weather = (24 + (Math.random() * 10));
@@ -959,8 +1132,8 @@ export default class Executor {
         return serpApiResponse
     }
 
-    async wikipediaFn(topicName: string) { 
-        const wikipediaResponse = `data from wikipedia about topic ${topicName},it is a school for enginnering students satrted by great developer` 
+    async wikipediaFn(topicName: string) {
+        const wikipediaResponse = `data from wikipedia about topic ${topicName},it is a school for enginnering students satrted by great developer`
 
         const toolInstance = await ToolInstance.create({
             workflowInstanceId: this.workflowInstanceId,

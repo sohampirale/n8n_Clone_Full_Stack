@@ -14,7 +14,8 @@ const executorsMap=new Map()
 async function startWorker() {
     await connectDB()
     executionWorker()
-    telegramWebhooksWorker()
+    telegramActionOnMessageWorker()
+    telegramToolOnMessageWorker()
 }
 
 async function executionWorker() {
@@ -49,7 +50,7 @@ async function executionWorker() {
     }
 }
 
-async function telegramActioOnMessageWorker(){
+async function telegramActionOnMessageWorker(){
     try {
         const redis =createClient({
             url:process.env.REDIS_URI!
@@ -76,8 +77,50 @@ async function telegramActioOnMessageWorker(){
                     continue;
                 }
 
-                executor.resume_telegram_on_message_node(nodeInstanceId)
                 console.log('-------RESUMED THE WAITING telegram_send_message_and_wait NODE--------');
+                executor.resume_telegram_on_message_node(nodeInstanceId)
+                
+            }catch(error){
+                console.log('ERROR :  telegramActionOnMessageWorker');
+                
+            }
+        }
+    } catch (error) {
+        console.log('ERROR : telegramWebhooksWorker : ',error);
+        console.log('Failed to connect to redid db,exiting gracefully');
+        process.exit()
+    }
+}
+
+async function telegramToolOnMessageWorker(){
+    try {
+        const redis =createClient({
+            url:process.env.REDIS_URI!
+        })
+        await redis.connect()
+        while(1){
+            try {
+                const {element}:{element:any}= await redis.brPop("executor:action:telegram_on_message",0)
+
+                const data = JSON.parse(element)
+                const {
+                    workflowInstanceId,
+                    nodeId,
+                    nodeInstanceId,
+                    chat_id
+                } = data;
+                if(!workflowInstanceId || !nodeId || !nodeInstanceId || !chat_id){
+                    console.log('Insufficient data provided data : ',data);
+                    continue;
+                }
+                const executor = executorsMap.get(workflowInstanceId.toString())
+                if(!executor){
+                    console.log('no executor object found for given workflowInstanceId in the executor:action:telegram_on_message');
+                    continue;
+                }
+
+                console.log('-------RESUMED THE WAITING telegram_send_message_and_wait NODE--------');
+                executor.resume_telegram_on_message_node(nodeInstanceId)
                 
             }catch(error){
                 console.log('ERROR :  telegramActionOnMessageWorker');
