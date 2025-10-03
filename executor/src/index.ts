@@ -65,7 +65,8 @@ async function telegramActionOnMessageWorker(){
                     workflowInstanceId,
                     nodeId,
                     nodeInstanceId,
-                    chat_id
+                    chat_id,
+                    telegramWebhookData
                 } = data;
                 if(!workflowInstanceId || !nodeId || !nodeInstanceId || !chat_id){
                     console.log('Insufficient data provided data : ',data);
@@ -78,7 +79,7 @@ async function telegramActionOnMessageWorker(){
                 }
 
                 console.log('-------RESUMED THE WAITING telegram_send_message_and_wait NODE--------');
-                executor.resume_telegram_on_message_node(nodeInstanceId)
+                executor.resume_telegram_send_message_and_wait_for_response(nodeInstanceId,telegramWebhookData)
                 
             }catch(error){
                 console.log('ERROR :  telegramActionOnMessageWorker');

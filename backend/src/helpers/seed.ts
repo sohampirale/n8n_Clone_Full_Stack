@@ -20,6 +20,7 @@ export async function createTriggerActions() {
     queueName: `trigger:telegram_on_message`,
     icon: `https://imgs.search.brave.com/WFAdu672ZAB4qo1sO_7A6W5dSfBFwTefFVYh8IomlTc/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9jZG4t/aWNvbnMtcG5nLmZy/ZWVwaWsuY29tLzI1/Ni85NjQzLzk2NDM2/NTcucG5nP3NlbXQ9/YWlzX3doaXRlX2xh/YmVs`
   }]
+  
   try {
     await TriggerAction.insertMany(triggerActionData)
     console.log('All triggeractions created successfully');

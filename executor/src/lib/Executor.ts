@@ -149,7 +149,20 @@ export default class Executor {
                     // const node= await Node.aggregate()
                     //all checks that are personal to the telegram_send_message_and_wait_for_response
                     const node = allSolelyDependentNodes[i]
-                    
+                    //TODO uncomment lines below after completing frontend
+                    // if(!node.credential){
+                    //     console.log('Credential not foud for the telegram_send_message_and_wait_for_response node');
+                    //     continue;
+                    // } else if(!node.credential.credentialForm){
+                    //     console.log('Credential Form not foud for the telegram_send_message_and_wait_for_response node');
+                    //     continue;
+                    // } else if(node.credential.credentialForm.name!='telegram'){
+                    //     console.log('Incorrect credential attached to the telegram_send_message_and_wait_for_response node');
+                    //     continue;
+                    // } else if(!node.credential.data.bot_token){
+                    //     console.log('bot_token not found in the telegram credential attached to the  the telegram_send_message_and_wait_for_response node');
+                    //     continue;
+                    // }
 
                     console.log('node handler to be started is : telegram_send_message_and_wait_for_response');
                     const inData = await this.inDataProducer(node._id)
@@ -406,8 +419,10 @@ export default class Executor {
         }
     }
 
-    async resume_telegram_send_message_and_wait_for_response(nodeInstanceId: mongoose.Schema.Types.ObjectId, telegramWebhookData: { text: string }) {
+    async resume_telegram_send_message_and_wait_for_response(nodeInstanceIdStr: mongoose.Schema.Types.ObjectId, telegramWebhookData) {
         try {
+
+            const nodeInstanceId=new mongoose.Types.ObjectId(nodeInstanceIdStr)
             const nodeInstance = await NodeInstance.findOne({
                 _id: nodeInstanceId
             })
@@ -420,14 +435,19 @@ export default class Executor {
                 return;
             }
 
-            const { text } = telegramWebhookData;
+            const text = telegramWebhookData?.message?.text;
+            if(!text){
+                console.log('Text not found in resume_telegram_send_message_and_wait_for_response handler');
+                return;
+            }
             nodeInstance.outData.receivedMessage = text
             nodeInstance.waiting = false;
             nodeInstance.waitingIdentifier = ""
             await nodeInstance.save()
-            this.handleNextDependingNodeExecution(nodeInstance._id)
+            this.handleNextDependingNodeExecution(nodeInstanceId)
         } catch (error) {
-
+            console.log('ERROR :: resume_telegram_send_message_and_wait_for_response : ',error);
+            this.handleNextDependingNodeExecution(nodeInstanceId)
         }
     }
 
@@ -918,8 +938,6 @@ export default class Executor {
         }
     }
 
-
-
     /** Working of aiNode
      * since all checks are done we can just work with the node 90%
      * 1.retrive {userQuery} from node.data and render it using Mustache using inData
@@ -1085,7 +1103,6 @@ export default class Executor {
             return {}
         }
     }
-
 
     //adding all the tool functions that are needed in toolFunctionMap
     async fetchWeatherFn(cityName: string) {

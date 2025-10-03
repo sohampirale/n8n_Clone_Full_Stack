@@ -333,7 +333,8 @@ async function startNewTelegramConversation(userId:mongoose.Schema.Types.ObjectI
                     triggerActionId: allTriggers[i].triggerActionId,
                     workflowId: allTriggers[i].workflowId,
                     owner: userId,
-                    chat_id
+                    chat_id,
+                    telegramWebhookData:data
                 }
 
                 await redis.lPush("executor:trigger", JSON.stringify(executionStartObject))
@@ -365,6 +366,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                 message: 'No data received'
             })
         }
+        console.log('telegramWebhookData : ',data);
+        
 
         const text = data.message.text
         const chat_id = data.message.chat?.id
@@ -421,14 +424,17 @@ export async function telegramWebhook(req: Request, res: Response) {
             }
         ])
 
-        console.log('credential ; ', credential);
-        if (!credential || credential.length == 0) {
-            console.log('Telegram credential not found for the user with username : ', username);
-            return res.status(404).json({
-                message: 'Telegram credential not found'
-            })
-        }
+        //TODO uncommemnt this after completing frontend
+        // console.log('credential ; ', credential);
+        // if (!credential || credential.length == 0) {
+        //     console.log('Telegram credential not found for the user with username : ', username);
+        //     return res.status(404).json({
+        //         message: 'Telegram credential not found'
+        //     })
+        // }
+
         credential = credential[0]
+
         let redis;
         try {
             redis = await getRedisClient()
@@ -458,7 +464,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                     workflowInstanceId: nodeInstance.workflowInstanceId,
                     nodeId: nodeInstance.nodeId,
                     nodeInstanceId: nodeInstance._id,
-                    chat_id
+                    chat_id,
+                    telegramWebhookData:data
                 }
                 await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
             } else {
@@ -479,7 +486,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                         workflowInstanceId: toolInstance.workflowInstanceId,
                         toolInstanceId: toolInstance._id,
                         aiNodeInstanceId: toolInstance.aiNodeInstanceId,
-                        chat_id
+                        chat_id,
+                        telegramWebhookData:data
                     }
                     await redis.lPush("executor:tool:telegram_on_message", JSON.stringify(resumeToolObj))
                 } else {
