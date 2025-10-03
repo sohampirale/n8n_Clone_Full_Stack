@@ -1,21 +1,22 @@
 import dotenv from "dotenv"
 dotenv.config()
 import { getRedisClient } from "./helpers/redisClient"
-import Executor from "./lib/Executor"
+import Executor, { waitingToolInstances } from "./lib/Executor"
 import type { IstartExecutionObject } from "./interfaces"
 import { connectDB } from "./lib/connectDB"
 import { createClient } from "redis";
 import mongoose, { mongo } from "mongoose"
 import { Node, NodeInstance } from "./models/node.model"
 import { ToolInstance } from "./models/tool.model"
+import { tool } from "@langchain/core/tools"
 
 const executorsMap=new Map()
 
 async function startWorker() {
     await connectDB()
     executionWorker()
+    telegramSendMessageAndWaitNodeWorker()
     telegramSendMessageAndWaitToolWorker()
-    telegramToolOnMessageWorker()
 }
 
 async function executionWorker() {
@@ -53,7 +54,7 @@ async function executionWorker() {
     }
 }
 
-async function telegramSendMessageAndWaitToolWorker(){
+async function telegramSendMessageAndWaitNodeWorker(){
     try {
         const redis =createClient({
             url:process.env.REDIS_URI!
@@ -89,7 +90,7 @@ async function telegramSendMessageAndWaitToolWorker(){
                 executor.resume_telegram_send_message_and_wait_for_response(nodeInstanceId,telegramWebhookData)
                 
             }catch(error){
-                console.log('ERROR :  telegramSendMessageAndWaitToolWorker : ',error);
+                console.log('ERROR :  telegramSendMessageAndWaitNodeWorker : ',error);
                 
             }
         }
@@ -100,7 +101,7 @@ async function telegramSendMessageAndWaitToolWorker(){
     }
 }
 
-async function telegramToolOnMessageWorker(){
+async function telegramSendMessageAndWaitToolWorker(){
     try {
         const redis =createClient({
             url:process.env.REDIS_URI!
@@ -109,34 +110,59 @@ async function telegramToolOnMessageWorker(){
         while(1){
             try {
                 const {element}:{element:any}= await redis.brPop("executor:tool:telegram_on_message",0)
-
+                console.log('inside telegramSendMessageAndWaitToolWorker');
+                
                 const data = JSON.parse(element)
                 const {
                     workflowInstanceId,
-                    nodeId,
-                    nodeInstanceId,
-                    chat_id
+                    toolId,
+                    toolInstanceId,
+                    chat_id,
+                    telegramWebhookData
                 } = data;
-                if(!workflowInstanceId || !nodeId || !nodeInstanceId || !chat_id){
+
+                if(!workflowInstanceId || !toolId || !toolInstanceId || !chat_id){
                     console.log('Insufficient data provided data : ',data);
                     continue;
                 }
-                const executor = executorsMap.get(workflowInstanceId.toString())
-                if(!executor){
-                    console.log('no executor object found for given workflowInstanceId in the executor:action:telegram_on_message');
-                    continue;
-                }
+                const text = telegramWebhookData?.message?.text
 
-                console.log('-------RESUMED THE WAITING telegram_send_message_and_wait NODE--------');
-                executor.resume_telegram_on_message_node(nodeInstanceId)
+                console.log('workflowInstanceId :',workflowInstanceId);
+
+                const workflowInstanceIdStr = workflowInstanceId.toString()
+                console.log('workflowInstanceId : ',workflowInstanceId);
+                console.log('toolInstanceId : ',toolInstanceId);
+                
+                if(waitingToolInstances.has(workflowInstanceIdStr)){
+                    const obj=waitingToolInstances.get(workflowInstanceIdStr)
+                    const toolInstanceIdStr = toolInstanceId.toString()
+                    if(obj[toolInstanceIdStr]){
+                        
+                        const resolve=obj[toolInstanceId]
+                        console.log('resolve obj : ',resolve);
+                        const toolInstance= await ToolInstance.findById(toolInstanceId)
+                        if(toolInstance){
+                            toolInstance.waiting=false;
+                            toolInstance.waitingIdentifier=null
+                            await toolInstance?.save()
+                        }
+                        resolve(`message received  after waiting for response : ${text}`)
+                    } else {
+                        console.log('resolve obj not found for given toolInstanceId : ',toolInstanceId);
+                    }
+
+                } else {
+                    console.log('no obj found for this workflowInstanceId : ',workflowInstanceId);
+                    
+                }
                 
             }catch(error){
-                console.log('ERROR :  telegramActionOnMessageWorker : ',error);
+                console.log('ERROR :  telegramSendMessageAndWaitToolWorker : ',error);
                 
             }
         }
     } catch (error) {
-        console.log('ERROR : telegramWebhooksWorker : ',error);
+        console.log('ERROR : telegramSendMessageAndWaitToolWorker : ',error);
         console.log('Failed to connect to redid db,exiting gracefully');
         process.exit()
     }

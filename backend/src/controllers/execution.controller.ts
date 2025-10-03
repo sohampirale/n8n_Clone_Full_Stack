@@ -458,8 +458,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                 waiting: true,
                 waitingIdentifier: chat_id
             }).sort({ createdAt: 1 });
-            console.log('no of waiting nodeInstances found : ',nodeInstances.length);
-            
+            console.log('no of waiting nodeInstances found : ', nodeInstances.length);
+
             if (nodeInstances && nodeInstances.length != 0) {
                 res.status(200).json({})
 
@@ -474,8 +474,8 @@ export async function telegramWebhook(req: Request, res: Response) {
                         telegramWebhookData: data
                     }
                     await redis.lPush("executor:action:telegram_on_message", JSON.stringify(resumeWorkflowObj))
-                    console.log('Pushed nodeInstance no : ',(i+1),' to redis queue');
-                    
+                    console.log('Pushed nodeInstance no : ', (i + 1), ' to redis queue');
+
                 }
                 return;
             } else {
@@ -484,25 +484,33 @@ export async function telegramWebhook(req: Request, res: Response) {
                 //68dfec3e03b29c6369baffe6
 
                 //check if any tool is waiting with waitingIdentifier:chat_id
-                const toolInstance = await ToolInstance.findOne({
+                console.log('userId : ', userId);
+
+                const toolInstances = await ToolInstance.find({
                     owner: userId,
                     waiting: true,
                     waitingIdentifier: chat_id
                 }).sort({ createClient: 1 })
 
-                if (toolInstance) {
+                if (toolInstances && toolInstances.length != 0) {
                     res.status(200).json({})
 
-                    console.log('There is one toolInstance of tool:telegram_on_message waiting on chat_id : ', chat_id);
-                    console.log('toolInstance : ', toolInstance);
-                    const resumeToolObj = {
-                        workflowInstanceId: toolInstance.workflowInstanceId,
-                        toolInstanceId: toolInstance._id,
-                        aiNodeInstanceId: toolInstance.aiNodeInstanceId,
-                        chat_id,
-                        telegramWebhookData: data
+                    for (let i = 0; i < toolInstances.length; i++) {
+                        const toolInstance = toolInstances[i]!
+
+
+                        console.log('There is one toolInstance of tool:telegram_on_message waiting on chat_id : ', chat_id);
+                        console.log('toolInstance : ', toolInstance);
+                        const resumeToolObj = {
+                            workflowInstanceId: toolInstance.workflowInstanceId,
+                            toolInstanceId: toolInstance._id,
+                            aiNodeInstanceId: toolInstance.aiNodeInstanceId,
+                            chat_id,
+                            toolId: toolInstance.toolId,
+                            telegramWebhookData: data
+                        }
+                        await redis.lPush("executor:tool:telegram_on_message", JSON.stringify(resumeToolObj))
                     }
-                    await redis.lPush("executor:tool:telegram_on_message", JSON.stringify(resumeToolObj))
                 } else {
                     res.status(200).json({})
 

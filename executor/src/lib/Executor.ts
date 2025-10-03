@@ -20,12 +20,15 @@ import { DynamicTool, tool } from "@langchain/core/tools";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 import type { Node } from "@langchain/core/runnables/graph";
+import { Credential } from "../models/credential.model";
 
 const allToolsSchema = {
     fetch_weather: z.object({
         cityName: z.string().describe('cityname whose current weather needs to be fetched')
     })
 }
+
+export const waitingToolInstances= new Map()
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -65,9 +68,9 @@ export default class Executor {
         this.toolFunctionMap = new Map([
             ['fetch_weather', this.fetchWeatherFn],
             ['serpApi', this.serpApiFn],
-            ['wikipedia_search', this.wikipediaFn]
+            ['wikipedia_search', this.wikipediaFn],
+            ["telegram_send_message_and_wait_for_response", this.telegram_send_message_and_wait_for_response_toolFN]
         ])
-        this.waitingToolInstances = new Map()
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -1012,56 +1015,77 @@ export default class Executor {
                 }
             })
 
-            const initialState = {
-                chat_id: "123456789",  // maybe from DB/session
-                user_id: "soham",
-                workflowInstanceId: this.workflowInstanceId,
-                workflowId: this.workflowId,
+            //TODO uncomment this after completing frontend
+            // let {chat_id}=node.data
 
+            // if(chat_id){
+            //     chat_id=Mustache.render(chat_id,inData)
+            // }
+
+            const initialState = {
+                workflowInstanceId: this.workflowInstanceId,
+                triggerInstanceId: this.triggerInstanceId,
+                triggerActionId: this.triggerActionId,
+                triggerId: this.triggerId,
+                workflowId: this.workflowId,
+                owner: this.owner,
+                triggerInstance: this.triggerInstance,
+                aiNodeInstanceId:aiNodeInstance._id
             };
-    
-            
+
+
             const agentTools: any = [];
 
             const tools = node.tools;
             for (let i = 0; i < tools.length; i++) {
-                    const toolFormName = tools[i]?.toolForm?.name
-                    console.log('toolFormName : ', toolFormName);
-                    if (this.toolFunctionMap.has(toolFormName)) {
-                        initialState[toolFormName] = {
-                            aiNodeInstanceId: aiNodeInstance._id,
-                            toolId: tools[i]._id
-                        }
-                        const toolFn = this.toolFunctionMap.get(toolFormName)
-                        console.log('description : ', tools[i].toolForm.description);
-                        const someLocalVariable="hehe"
-                        const tool = new DynamicTool({
-                            name: toolFormName,
-                            description: tools[i]?.toolForm?.description,
-                            func: async (input)=>{
-                                return await toolFn(input,initialState)
-                            },
-                            schema:allToolsSchema[toolFormName]
-                        })
-                        console.log('created tool with DynamicTool : ');
+                const toolFormName = tools[i]?.toolForm?.name
+                console.log('toolFormName : ', toolFormName);
+                if (this.toolFunctionMap.has(toolFormName)) {
 
-                        agentTools.push(tool)
+                    initialState[toolFormName] = {
+                        toolId: tools[i]._id
                     }
+
+                    if (toolFormName == 'telegram_send_message_and_wait_for_response') {
+                        initialState[toolFormName].chat_id = "940083925"
+                        //TODO uncomment after completing frontend
+                        // let {chat_id}=node.data;
+                        // if(chat_id){
+                        //     chat_id=Mustache.render(chat_id,inData)
+                        //     initialState[toolFormName].chat_id=chat_id
+                        // }
+                    }
+
+                    const toolFn = this.toolFunctionMap.get(toolFormName)
+                    console.log('description : ', tools[i].toolForm.description);
+                    const tool = new DynamicTool({
+                        name: toolFormName,
+                        description: tools[i]?.toolForm?.description,
+                        func: async (input) => {
+                            return await toolFn(input, initialState)
+                        },
+                        schema: allToolsSchema[toolFormName]
+                    })
+                    console.log('created tool with DynamicTool : ');
+
+                    agentTools.push(tool)
                 }
+            }
 
             const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
-            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed,
-            when using tools provide the tool with first argument as exactly one JSON object and nothing else , matching the tool's Schema field
+            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed(sending telegram messages and waiting for response),
             `;
 
             // const { userQuery } = node.data
-            const userQuery = `what is current weather of Mumbai ?`
+            // const userQuery = `what is current weather of Mumbai ?`
             // const userQuery = `search for 100xDevs on the wikipedia and return what you get and use tools given to you`
             // const userQuery = `What is meaning of Software developement `
             // const userQuery = `I am curious about what exactly is AI and hwo it works`
             // const userQuery = `Can you tell me currentl weather of Mumbai and SanFranisco `
             // const userQuery = `I want to know about what is 100xSchool in India,fetch from inteernet if you dont know`
             // const userQuery = `what is 2 +2`
+            // const userQuery = 'tell the owner on telegram that product delivered is very great! and wait for his response as well'
+            const userQuery = 'tell the owner on telegram that the service was good but needs improvement in monitoring! and wait for his response as well'
 
             const agent = createReactAgent({
                 llm,
@@ -1076,7 +1100,6 @@ export default class Executor {
 
             console.log('result : ');
             console.log(result);
-
 
             const llmRespponse = result.messages[result.messages.length - 1].content;
             console.log("Final LLM Response:", llmRespponse);
@@ -1157,8 +1180,8 @@ export default class Executor {
             console.log('inside fetchWeatherFn');
             console.log('input : ', input);
             console.log('state : ', state);
-            console.log('someLocalVariable : ',someLocalVariable);
-            
+            console.log('someLocalVariable : ', someLocalVariable);
+
             const weather = (24 + (Math.random() * 10));
             // const toolInstance = await ToolInstance.create({
             //     workflowInstanceId: this.workflowInstanceId,
@@ -1228,18 +1251,91 @@ export default class Executor {
         return wikipediaResponse
     }
 
-    async telegram_send_message_and_wait_for_response_toolFN(input:any,state:any) {
+    async telegram_send_message_and_wait_for_response_toolFN(text: string, state: any) {
         try {
             // toolInstanceId: string, bot_token: string, chat_id: string, text: string
             // const toolInstance = await ToolInstance.findById(new mongoose.Types.ObjectId(toolInstanceId))
             // if (!toolInstance) {
-                // return "invalid toolInstanceId provided in first argument"
+            // return "invalid toolInstanceId provided in first argument"
             // }
             console.log('inside telegram_send_message_and_wait_for_response_toolFN');
-            console.log('input : ',input);
-            console.log('state');
+            console.log('state : ', state);
+            console.log('text : ',text);
             
-            const {bot_token,aiNodeInstanceId}=state
+            const {
+                workflowInstanceId,
+                triggerInstanceId,
+                triggerActionId,
+                triggerId,
+                workflowId,
+                owner,
+                triggerInstance,
+                aiNodeInstanceId
+            }=state
+
+
+            const chat_id = state?.telegram_send_message_and_wait_for_response?.chat_id
+            const toolId = state?.telegram_send_message_and_wait_for_response?.toolId
+            console.log('chat_id',chat_id);
+            
+            const toolInstance = await ToolInstance.create({
+                workflowInstanceId,
+                toolId,
+                workflowId,
+                aiNodeInstanceId,
+                owner,
+                inData: {
+                    sentMessage: text
+                },
+                outData: {
+                },
+                executeSuccess: true,
+                error: {},
+                waiting: true,
+                waitingIdentifier: chat_id
+            })
+            console.log('toolInstance created : ',toolInstance);
+            
+
+            //fetch the telegram credential with the help of this.owner and then retrive bot_token from it
+
+            let credential = await Credential.aggregate([
+                {
+                    $match: {
+                        owner
+                    }
+                }, {
+                    $lookup: {
+                        from: "credentialforms",
+                        foreignField: "_id",
+                        localField: "credentialFormId",
+                        as: "credentialForm"
+                    }
+                }, {
+                    $unwind: {
+                        path: "$credentialForm"
+                    }
+                }, {
+                    $match: {
+                        "credentialForm.name": "telegram"
+                    }
+                }
+            ])
+
+            //TODO uncomment these after integrating frontend
+
+            // if (!credential || credential.length == 0) {
+            //     return "Owner has not attached telegram credential(bot_token) so cannot send any messages"
+            // }
+
+            const bot_token = process.env.TELEGRAM_BOT_TOKEN!
+            //TODO uncomment these after integrating frontend
+            // credential=credential[0]
+            // const bot_token=credential.data?.bot_token
+            if (!bot_token) {
+                console.log('bot_token not found');
+                return "bot_token not found to send telegram message";
+            }
 
             const url = `https://api.telegram.org/bot${bot_token}/sendMessage`
             const { data: response } = await axios.post(url, {
@@ -1247,13 +1343,22 @@ export default class Executor {
                 text,
                 parse_mode: "HTML"
             })
-            toolInstance.waiting = true;
-            toolInstance.waitingIdentifier = chat_id;
-            await toolInstance.save()
-
-
+            console.log('response : ',response);
+            
             const promise = new Promise((resolve, reject) => {
-                this.waitingToolInstances.set((toolInstance._id).toString(), resolve)
+                const workflowInstanceIdStr = workflowInstanceId.toString()
+                const toolInstanceIdStr=(toolInstance._id).toString()
+                if(waitingToolInstances.has(workflowInstanceIdStr)){
+                    const obj=waitingToolInstances.get(workflowInstanceIdStr)
+                    obj[toolInstanceIdStr]=resolve
+                    waitingToolInstances.set(workflowInstanceIdStr,obj)
+                } else {
+                    const obj={}
+                    obj[toolInstanceIdStr]=resolve
+                    waitingToolInstances.set(workflowInstanceIdStr,obj)
+                }
+                console.log('waitingToolInstances : ',waitingToolInstances);
+                
             })
             return promise
         } catch (error) {

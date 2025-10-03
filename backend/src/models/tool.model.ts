@@ -94,6 +94,11 @@ const toolInstanceSchema = new Schema({
     ref: "Workflow",
     required: true
   },
+  owner:{
+    type:ObjectId,
+    ref:'User',
+    required:true
+  },
   aiNodeInstanceId: {
     type: ObjectId,
     ref: "Node",
