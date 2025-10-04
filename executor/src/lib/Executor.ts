@@ -25,10 +25,13 @@ import { Credential } from "../models/credential.model";
 const allToolsSchema = {
     fetch_weather: z.object({
         cityName: z.string().describe('cityname whose current weather needs to be fetched')
+    }),
+    telegram_send_message_and_wait_for_response: z.object({
+        text: z.string()
     })
 }
 
-export const waitingToolInstances= new Map()
+export const waitingToolInstances = new Map()
 
 //TODO remove the double db fetching logic from inside every node action handler and inside handleNextDependingNodeExecution
 export default class Executor {
@@ -1000,7 +1003,7 @@ export default class Executor {
             llm = new ChatGoogleGenerativeAI({
                 model: "gemini-2.0-flash",
                 apiKey: process.env.GOOGLE_API_KEY,
-                temperature: 0
+                temperature: 1
             });
 
 
@@ -1030,7 +1033,7 @@ export default class Executor {
                 workflowId: this.workflowId,
                 owner: this.owner,
                 triggerInstance: this.triggerInstance,
-                aiNodeInstanceId:aiNodeInstance._id
+                aiNodeInstanceId: aiNodeInstance._id
             };
 
 
@@ -1060,7 +1063,7 @@ export default class Executor {
                     console.log('description : ', tools[i].toolForm.description);
                     const tool = new DynamicTool({
                         name: toolFormName,
-                        description: tools[i]?.toolForm?.description,
+                        description: "Sends message to the connected user on telegram and waits for their response and gives back their response" || tools[i]?.toolForm?.description,
                         func: async (input) => {
                             return await toolFn(input, initialState)
                         },
@@ -1072,9 +1075,152 @@ export default class Executor {
                 }
             }
 
-            const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
-            who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed(sending telegram messages and waiting for response),
-            `;
+            // const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
+            // who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed(sending telegram messages and waiting for response)
+            // ,
+            // `;
+
+            // const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
+            // who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed(sending telegram messages and waiting for response)
+            // ,use telegram tool to keep talking with the client and gather information about them such s i.name ii.age iii.city in which they live in frinedly tone, but do not STOP using this tool until we have received all 3 required field name age cityName 
+            // `;
+
+            const systemPrompt = `# AI Workflow Assistant - System Instructions
+
+## Core Identity
+You are an intelligent workflow assistant integrated into an AI workflow management platform. Your primary mission is to gather complete user information through natural, friendly conversation via Telegram.
+
+## Required Information Collection
+You MUST collect these three fields before concluding the conversation:
+1. **name** - User's full name
+2. **age** - User's age (numeric value)
+3. **cityName** - City where the user currently lives
+
+### Collection Status Tracking
+- Keep mental track of which fields you have successfully collected
+- DO NOT mark a field as collected until you receive a clear, valid response
+- If a response is ambiguous or incomplete, ask for clarification
+
+## Tool Usage Guidelines
+Before stopping the use of tools and ending the chat ask tehm if they need any help and keep helping and talkign back to them until they are satisfied
+
+### Primary Tool: Telegram Communication
+- Use the Telegram tool as your PRIMARY communication channel
+- Each message should feel natural and conversational, never robotic
+- Continue using the tool in a loop until ALL three required fields are collected
+- Never assume information - always wait for explicit user responses
+
+### Secondary Tools
+- Use any additional tools at your disposal when they enhance the user experience
+- Examples: data validation, city verification, age range checking
+- Tools should support, not replace, the main conversation flow
+
+## Conversation Flow Strategy
+
+### Opening (If no data collected)
+- Greet warmly and introduce yourself
+- Explain briefly that you'd like to get to know them better
+- Ask for the first piece of information naturally
+
+Example: "Hi there! 👋 I'm your AI assistant. I'd love to get to know you better so I can help you more effectively. What's your name?"
+
+### Middle (Partial data collected)
+- Acknowledge each response positively
+- Smoothly transition to the next missing field
+- Use the information already collected to personalize questions
+
+Example: "Nice to meet you, Sarah! And how old are you?"
+
+### Handling Edge Cases
+- **Unclear responses**: Politely ask for clarification
+  - "I want to make sure I got that right. Could you confirm your age for me?"
+- **Missing information**: Explicitly state what you still need
+  - "Great! I have your name and age. Just need to know - which city do you live in?"
+- **Resistance**: Be respectful but persistent
+  - "I understand privacy is important. This information helps me provide better assistance. Your city name would be really helpful!"
+
+### Closing (All data collected)
+- Confirm all collected information
+- Thank the user warmly
+- Indicate successful completion
+
+Example: "Perfect! Let me confirm: Your name is John, you're 28 years old, and you live in Mumbai. Is that correct? Thank you so much for sharing this with me!"
+
+## Critical Rules
+
+### MUST DO:
+✓ Use Telegram tool for EVERY user interaction
+✓ Maintain a friendly, conversational tone throughout
+✓ Validate each piece of information before marking as collected
+✓ Continue the conversation loop until all 3 fields are complete
+✓ Handle errors gracefully and retry if tool calls fail
+✓ Be patient with users who provide incomplete information
+
+### MUST NOT DO:
+✗ Stop the conversation before collecting all 3 required fields
+✗ Assume or infer information that wasn't explicitly provided
+✗ Use aggressive or pushy language
+✗ Move to the next field before confirming the current one
+✗ Accept invalid data (e.g., non-numeric age, obviously fake names)
+✗ Make the user feel interrogated - keep it conversational
+
+## Data Validation Guidelines
+
+### Name
+- Should contain at least first name
+- Can include full name (first + last)
+- Reject single letters or obviously invalid entries
+- Accept various cultural name formats
+
+### Age
+- Must be a numeric value
+- Reasonable range: 13-120 years
+- If unrealistic, politely ask for confirmation
+- Accept age ranges only if user is uncomfortable with exact age
+
+### City Name
+- Should be a recognizable city name
+- Accept various spellings and languages
+- If ambiguous (e.g., "Paris" - France or Texas?), ask for country
+- Don't require country unless clarification is needed
+
+## Tone & Personality
+- **Friendly**: Use warm, welcoming language
+- **Professional**: Maintain respect and boundaries
+- **Patient**: Don't rush the user
+- **Adaptive**: Match the user's communication style (formal/casual)
+- **Encouraging**: Use positive reinforcement ("Great!", "Perfect!", "Thanks!")
+- **Human-like**: Use natural conversation patterns, occasional emojis (sparingly)
+
+## State Management
+Internally track your progress:
+- [ ] name_collected: false
+- [ ] age_collected: false  
+- [ ] city_collected: false
+
+Only mark a field as true when you have valid, confirmed data.
+
+## Error Recovery
+If a tool call fails:
+1. Acknowledge the issue transparently
+2. Retry the operation
+3. If repeated failures, explain the situation politely
+4. Continue attempting to collect information
+
+## Completion Criteria
+The conversation is complete ONLY when:
+1. All three fields (name, age, cityName) are collected
+2. Each field contains valid data
+3. User has confirmed the information (optional but recommended)
+
+Remember: Your success is measured by complete, accurate data collection while maintaining a positive user experience. Be thorough, be friendly, and be persistent!`;
+
+            // const systemPrompt = `You are a helpful assistent and part of the AI workflow management software, the sole purpose you have is using the telegram tool to send message and wait for response and collect information from the user via telegram "tool"!! KEEP TALKING with the user until you recived their 
+            // i.Name
+            // ii.age
+            // iii.city in which they live
+            // You have a very friendly tone and authentic helper
+            // ` 
 
             // const { userQuery } = node.data
             // const userQuery = `what is current weather of Mumbai ?`
@@ -1085,7 +1231,7 @@ export default class Executor {
             // const userQuery = `I want to know about what is 100xSchool in India,fetch from inteernet if you dont know`
             // const userQuery = `what is 2 +2`
             // const userQuery = 'tell the owner on telegram that product delivered is very great! and wait for his response as well'
-            const userQuery = 'tell the owner on telegram that the service was good but needs improvement in monitoring! and wait for his response as well'
+            const userQuery = 'Heyy! ai node'
 
             const agent = createReactAgent({
                 llm,
@@ -1258,10 +1404,10 @@ export default class Executor {
             // if (!toolInstance) {
             // return "invalid toolInstanceId provided in first argument"
             // }
-            console.log('inside telegram_send_message_and_wait_for_response_toolFN');
+            console.log('-----------------INSIDE telegram_send_message_and_wait_for_response_toolFN');
             console.log('state : ', state);
-            console.log('text : ',text);
-            
+            console.log('text : ', text);
+
             const {
                 workflowInstanceId,
                 triggerInstanceId,
@@ -1271,13 +1417,13 @@ export default class Executor {
                 owner,
                 triggerInstance,
                 aiNodeInstanceId
-            }=state
+            } = state
 
 
             const chat_id = state?.telegram_send_message_and_wait_for_response?.chat_id
             const toolId = state?.telegram_send_message_and_wait_for_response?.toolId
-            console.log('chat_id',chat_id);
-            
+            console.log('chat_id', chat_id);
+
             const toolInstance = await ToolInstance.create({
                 workflowInstanceId,
                 toolId,
@@ -1294,8 +1440,8 @@ export default class Executor {
                 waiting: true,
                 waitingIdentifier: chat_id
             })
-            console.log('toolInstance created : ',toolInstance);
-            
+            console.log('toolInstance created : ', toolInstance);
+
 
             //fetch the telegram credential with the help of this.owner and then retrive bot_token from it
 
@@ -1343,22 +1489,22 @@ export default class Executor {
                 text,
                 parse_mode: "HTML"
             })
-            console.log('response : ',response);
-            
+            console.log('response : ', response);
+
             const promise = new Promise((resolve, reject) => {
                 const workflowInstanceIdStr = workflowInstanceId.toString()
-                const toolInstanceIdStr=(toolInstance._id).toString()
-                if(waitingToolInstances.has(workflowInstanceIdStr)){
-                    const obj=waitingToolInstances.get(workflowInstanceIdStr)
-                    obj[toolInstanceIdStr]=resolve
-                    waitingToolInstances.set(workflowInstanceIdStr,obj)
+                const toolInstanceIdStr = (toolInstance._id).toString()
+                if (waitingToolInstances.has(workflowInstanceIdStr)) {
+                    const obj = waitingToolInstances.get(workflowInstanceIdStr)
+                    obj[toolInstanceIdStr] = resolve
+                    waitingToolInstances.set(workflowInstanceIdStr, obj)
                 } else {
-                    const obj={}
-                    obj[toolInstanceIdStr]=resolve
-                    waitingToolInstances.set(workflowInstanceIdStr,obj)
+                    const obj = {}
+                    obj[toolInstanceIdStr] = resolve
+                    waitingToolInstances.set(workflowInstanceIdStr, obj)
                 }
-                console.log('waitingToolInstances : ',waitingToolInstances);
-                
+                console.log('waitingToolInstances : ', waitingToolInstances);
+
             })
             return promise
         } catch (error) {
