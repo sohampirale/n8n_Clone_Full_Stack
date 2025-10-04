@@ -3,7 +3,7 @@ import '@xyflow/react/dist/style.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Background, Controls, Position, Handle, ReactFlowProvider, NodeTypes, useStoreApi } from '@xyflow/react';
 import { axiosInstance } from "@/helpers/axios";
-import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool, Trigger_telegram_on_message, WebhookTriggerNode, ManualClickTriggerNode, TelegramSendMessageNode, AIActionNode, TelegramSendAndWaitNode, GmailSendEmailNode } from './ReactFlow/Nodes';
+import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool, Trigger_telegram_on_message, WebhookTriggerNode, ManualClickTriggerNode, TelegramSendMessageNode, AIActionNode, TelegramSendAndWaitNode, GmailSendEmailNode, createToolFormNode, createTriggerNode, createLLMNode } from './ReactFlow/Nodes';
 
 // const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }];
 // const initialNodes = [
@@ -133,37 +133,22 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     triggerActions.forEach(triggerAction => {
       const triggerActionName = triggerAction?.name
-      let func = function NodeComponent(props) {
+      types[triggerActionName] = createTriggerNode(triggerActionName) ??function NodeComponent(props) {
         return <ReactFlowTriggerNode data={triggerAction} />;
       }
 
-      if (triggerActionName == 'trigger_telegram_one_message') {
-        func = function NodeComponent(props) {
-          return <Trigger_telegram_on_message data={triggerAction} />;
-        }
-      } else if (triggerActionName == 'trigger:webhook') {
-        func = function NodeComponent(props) {
-          return <WebhookTriggerNode data={triggerAction} />;
-        }
-      } else if (triggerActionName == 'trigger:manual_click') {
-        func = function NodeComponent(props) {
-          return <ManualClickTriggerNode data={triggerAction} />;
-        }
-      }
-
-      types[triggerActionName] = func
     });
 
     credentialForms.forEach(credentialForm => {
       if (credentialForm.type == 'llm') {
-        types[credentialForm.name] = function NodeComponent(props) {
+        types[credentialForm.name] =createLLMNode(credentialForm?.name)?? function NodeComponent(props) {
           return <ReactFlowLLM data={credentialForm} />;
         }
       }
     });
 
     toolForms.forEach(toolForm => {
-      types[toolForm.name] = function NodeComponent(props) {
+      types[toolForm.name] =createToolFormNode(toolForm.name)?? function NodeComponent(props) {
         return <ReactFlowTool data={toolForm} />;
       }
     });
