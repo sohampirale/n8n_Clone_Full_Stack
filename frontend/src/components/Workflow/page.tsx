@@ -3,7 +3,7 @@ import '@xyflow/react/dist/style.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Background, Controls, Position, Handle, ReactFlowProvider, NodeTypes, useStoreApi } from '@xyflow/react';
 import { axiosInstance } from "@/helpers/axios";
-import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool } from './ReactFlow/Nodes';
+import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool, Trigger_telegram_on_message, WebhookTriggerNode, ManualClickTriggerNode, TelegramSendMessageNode, AIActionNode, TelegramSendAndWaitNode, GmailSendEmailNode } from './ReactFlow/Nodes';
 
 // const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }];
 // const initialNodes = [
@@ -34,7 +34,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   const [cnt, setCnt] = useState(4)
   const [workflowDB, setWorkflowDB] = useState(null)
-  const [newWorkflowName,setNewWorkflowName]=useState(slug)
+  const [newWorkflowName, setNewWorkflowName] = useState(slug)
   const [triggerActions, setTriggerActions] = useState([])
   const [nodeActions, setNodeActions] = useState([])
   const [toolForms, setToolForms] = useState([])
@@ -103,22 +103,55 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
     const types: NodeTypes = {};
     nodeActions.forEach(nodeAction => {
-      if (nodeAction.type == 'node') {
-        types[nodeAction.name] = function NodeComponent(props) {
-          return <ReactFlowNode data={nodeAction} />;
+      const nodeActionName = nodeAction?.name
+      console.log('nodeActionName : ', nodeActionName);
+      let func = function NodeComponent(props) {
+        return <ReactFlowNode data={nodeAction} />;
+      }
+
+      if (nodeActionName == 'telegram_send_message') {
+        func = function NodeComponent(props) {
+          return <TelegramSendMessageNode data={nodeAction} />;
         }
-      } else if (nodeAction.type == 'aiNode') {
-        types[nodeAction.name] = function NodeComponent(props) {
-          return <ReactFlowAINode data={nodeAction} />;
+      } else if (nodeActionName == 'aiNode') {
+        func = function NodeComponent(props) {
+          return <AIActionNode data={nodeAction} />;
+        }
+      } else if (nodeActionName == 'telegram_send_message_and_wait_for_response') {
+        func = function NodeComponent(props) {
+          return <TelegramSendAndWaitNode data={nodeAction} />;
+        }
+      } else if(nodeActionName=='gmail_send_email'){
+        func = function NodeComponent(props) {
+          return <GmailSendEmailNode data={nodeAction} />;
         }
       }
+
+      types[nodeActionName] = func
     });
 
 
     triggerActions.forEach(triggerAction => {
-      types[triggerAction.name] = function NodeComponent(props) {
+      const triggerActionName = triggerAction?.name
+      let func = function NodeComponent(props) {
         return <ReactFlowTriggerNode data={triggerAction} />;
       }
+
+      if (triggerActionName == 'trigger_telegram_one_message') {
+        func = function NodeComponent(props) {
+          return <Trigger_telegram_on_message data={triggerAction} />;
+        }
+      } else if (triggerActionName == 'trigger:webhook') {
+        func = function NodeComponent(props) {
+          return <WebhookTriggerNode data={triggerAction} />;
+        }
+      } else if (triggerActionName == 'trigger:manual_click') {
+        func = function NodeComponent(props) {
+          return <ManualClickTriggerNode data={triggerAction} />;
+        }
+      }
+
+      types[triggerActionName] = func
     });
 
     credentialForms.forEach(credentialForm => {
@@ -492,7 +525,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
         identityNo: id,
         credentialFormId: data._id,
         credentialForm: data,
-        model:'temporary_model_name',
+        model: 'temporary_model_name',
         data: {
           //add this also in future if needed
         }
@@ -545,6 +578,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
       const { data: response } = await axiosInstance.get(`/api/v1/action/list`)
       const allNodeActions = response.data
       setNodeActions(response.data)
+      console.log('all node actions :', response.data);
 
     } catch (error) {
       console.log('failed to fetch node actions from BE : ', error);
@@ -600,16 +634,16 @@ export default function Workflow({ username, slug }: { username: string, slug: s
 
   async function helperUpdateWorkflow() {
     try {
-      const {data:response}=await axiosInstance.put(`api/v1/workflow/${slug}`,{
-        workflow:{
+      const { data: response } = await axiosInstance.put(`api/v1/workflow/${slug}`, {
+        workflow: {
           ...workflow,
-          name:newWorkflowName
+          name: newWorkflowName
         }
       })
-      console.log('response for updatingWorkflow : ',response);
-      
+      console.log('response for updatingWorkflow : ', response);
+
     } catch (error) {
-      console.log('Failed to update the workflow : ',error);
+      console.log('Failed to update the workflow : ', error);
     }
   }
 
@@ -775,543 +809,206 @@ export default function Workflow({ username, slug }: { username: string, slug: s
           })}
         </div> */}
 
-       {/* Workflow Info Section */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        marginBottom: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <button
-          onClick={() => setWorkflowInfoExpanded(!workflowInfoExpanded)}
-          style={{
-            width: '100%',
-            padding: '16px 20px',
-            background: workflowInfoExpanded ? '#f9fafb' : '#ffffff',
-            color: '#374151',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '15px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            borderBottom: workflowInfoExpanded ? '1px solid #e5e7eb' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!workflowInfoExpanded) {
-              e.currentTarget.style.background = '#f9fafb';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!workflowInfoExpanded) {
-              e.currentTarget.style.background = '#ffffff';
-            }
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#6b7280',
-              marginRight: '12px'
-            }}></div>
-            Workflow Info
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
+        {/* Workflow Info Section */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <button
+            onClick={() => setWorkflowInfoExpanded(!workflowInfoExpanded)}
             style={{
-              transform: workflowInfoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
+              width: '100%',
+              padding: '16px 20px',
+              background: workflowInfoExpanded ? '#f9fafb' : '#ffffff',
+              color: '#374151',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '15px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              borderBottom: workflowInfoExpanded ? '1px solid #e5e7eb' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!workflowInfoExpanded) {
+                e.currentTarget.style.background = '#f9fafb';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!workflowInfoExpanded) {
+                e.currentTarget.style.background = '#ffffff';
+              }
             }}
           >
-            <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        
-        {workflowInfoExpanded && (
-          <div style={{ padding: '20px', background: '#ffffff' }}>
-            <div style={{ marginBottom: '16px' }}>
-              <h4 style={{ margin: '0 0 8px 0', color: '#111827', fontSize: '13px', fontWeight: '600' }}>Workflow Object</h4>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '12px',
-                fontSize: '11px',
-                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
-                color: '#64748b',
-                maxHeight: '120px',
-                overflowY: 'auto'
-              }}>
-                {JSON.stringify(workflow, null, 2)}
-              </div>
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#6b7280',
+                marginRight: '12px'
+              }}></div>
+              Workflow Info
             </div>
-            
-            <div>
-              <h4 style={{ margin: '0 0 8px 0', color: '#111827', fontSize: '13px', fontWeight: '600' }}>Node Types</h4>
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '12px',
-                fontSize: '11px',
-                fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
-                color: '#64748b',
-                maxHeight: '100px',
-                overflowY: 'auto'
-              }}>
-                {JSON.stringify(nodeTypes, null, 2)}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: workflowInfoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
 
-      {/* Node Actions Section */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        marginBottom: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <button
-          onClick={() => setNodeActionsExpanded(!nodeActionsExpanded)}
-          style={{
-            width: '100%',
-            padding: '16px 20px',
-            background: nodeActionsExpanded ? '#eff6ff' : '#ffffff',
-            color: '#374151',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '15px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            borderBottom: nodeActionsExpanded ? '1px solid #e5e7eb' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!nodeActionsExpanded) {
-              e.currentTarget.style.background = '#eff6ff';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!nodeActionsExpanded) {
-              e.currentTarget.style.background = '#ffffff';
-            }
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#3b82f6',
-              marginRight: '12px'
-            }}></div>
-            Node Actions
-            <span style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              background: '#e0e7ff',
-              color: '#3730a3',
-              fontSize: '12px',
-              fontWeight: '600',
-              borderRadius: '12px'
-            }}>
-              {nodeActions?.length || 0}
-            </span>
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            style={{
-              transform: nodeActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
-            }}
-          >
-            <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        
-        {nodeActionsExpanded && (
-          <div style={{ padding: '20px' }}>
-            <div style={{
-              display: 'grid',
-              gap: '16px',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
-            }}>
-              {nodeActions && nodeActions.map((nodeAction: any) => {
-                const isAINode = nodeAction.type === 'aiNode';
-                return (
-                  <div draggable
-                    style={{
-                      padding: '16px',
-                      border: '2px solid transparent',
-                      borderRadius: '12px',
-                      background: isAINode ? 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)' : 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)',
-                      textAlign: 'center',
-                      cursor: 'grab',
-                      transition: 'all 0.2s ease',
-                      position: 'relative',
-                      overflow: 'hidden'
-                    }}
-                    key={nodeAction._id}
-                    onDragStart={onDragStart(nodeAction, isAINode ? 'aiNode' : 'node')}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-3px)';
-                      e.currentTarget.style.borderColor = isAINode ? '#3b82f6' : '#10b981';
-                      e.currentTarget.style.boxShadow = `0 8px 25px ${isAINode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)'}`;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      fontSize: '18px'
-                    }}>
-                      {isAINode ? '🤖' : '⚡'}
-                    </div>
-                    <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
-                      <strong style={{
-                        color: isAINode ? '#1e40af' : '#065f46',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        display: 'block',
-                        marginBottom: '4px'
-                      }}>
-                        {nodeAction.name}
-                      </strong>
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#6b7280',
-                        background: '#ffffff',
-                        padding: '2px 8px',
-                        borderRadius: '8px',
-                        fontWeight: '500'
-                      }}>
-                        {isAINode ? 'AI Node' : 'Node'} Action
-                      </span>
-                    </div>
-                    <details style={{ textAlign: 'left', marginTop: '8px' }}>
-                      <summary style={{
-                        cursor: 'pointer',
-                        fontSize: '11px',
-                        color: '#6b7280',
-                        fontWeight: '500',
-                        padding: '4px 0'
-                      }}>
-                        View details
-                      </summary>
-                      <div style={{
-                        fontSize: '10px',
-                        color: '#6b7280',
-                        background: '#ffffff',
-                        border: '1px solid #e5e7eb',
-                        padding: '8px',
-                        borderRadius: '6px',
-                        marginTop: '6px',
-                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
-                        maxHeight: '100px',
-                        overflowY: 'auto'
-                      }}>
-                        {JSON.stringify(nodeAction, null, 2)}
-                      </div>
-                    </details>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Trigger Actions Section */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        marginBottom: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <button
-          onClick={() => setTriggerActionsExpanded(!triggerActionsExpanded)}
-          style={{
-            width: '100%',
-            padding: '16px 20px',
-            background: triggerActionsExpanded ? '#fef3c7' : '#ffffff',
-            color: '#374151',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '15px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            borderBottom: triggerActionsExpanded ? '1px solid #e5e7eb' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!triggerActionsExpanded) {
-              e.currentTarget.style.background = '#fef3c7';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!triggerActionsExpanded) {
-              e.currentTarget.style.background = '#ffffff';
-            }
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#f59e0b',
-              marginRight: '12px'
-            }}></div>
-            Trigger Actions
-            <span style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              background: '#fef3c7',
-              color: '#92400e',
-              fontSize: '12px',
-              fontWeight: '600',
-              borderRadius: '12px'
-            }}>
-              {triggerActions?.length || 0}
-            </span>
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            style={{
-              transform: triggerActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
-            }}
-          >
-            <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        
-        {triggerActionsExpanded && (
-          <div style={{ padding: '20px' }}>
-            <div style={{
-              display: 'grid',
-              gap: '16px',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
-            }}>
-              {triggerActions?.map((triggerAction) => (
-                <div
-                  key={triggerAction._id}
-                  draggable
-                  style={{
-                    padding: '16px',
-                    border: '2px solid transparent',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
-                    textAlign: 'center',
-                    cursor: 'grab',
-                    transition: 'all 0.2s ease',
-                    position: 'relative',
-                    overflow: 'hidden'
-                  }}
-                  onDragStart={onDragStart(triggerAction, 'trigger')}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-3px)';
-                    e.currentTarget.style.borderColor = '#f59e0b';
-                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(245, 158, 11, 0.15)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.borderColor = 'transparent';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <div style={{
-                    position: 'absolute',
-                    top: '8px',
-                    right: '8px',
-                    fontSize: '18px'
-                  }}>
-                    🎯
-                  </div>
-                  <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
-                    <strong style={{
-                      color: '#92400e',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      display: 'block',
-                      marginBottom: '4px'
-                    }}>
-                      {triggerAction.name}
-                    </strong>
-                    <span style={{
-                      fontSize: '11px',
-                      color: '#6b7280',
-                      background: '#ffffff',
-                      padding: '2px 8px',
-                      borderRadius: '8px',
-                      fontWeight: '500'
-                    }}>
-                      Trigger Action
-                    </span>
-                  </div>
-                  <details style={{ textAlign: 'left', marginTop: '8px' }}>
-                    <summary style={{
-                      cursor: 'pointer',
-                      fontSize: '11px',
-                      color: '#6b7280',
-                      fontWeight: '500',
-                      padding: '4px 0'
-                    }}>
-                      View details
-                    </summary>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#6b7280',
-                      background: '#ffffff',
-                      border: '1px solid #e5e7eb',
-                      padding: '8px',
-                      borderRadius: '6px',
-                      marginTop: '6px',
-                      fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
-                      maxHeight: '100px',
-                      overflowY: 'auto'
-                    }}>
-                      {JSON.stringify(triggerAction, null, 2)}
-                    </div>
-                  </details>
+          {workflowInfoExpanded && (
+            <div style={{ padding: '20px', background: '#ffffff' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ margin: '0 0 8px 0', color: '#111827', fontSize: '13px', fontWeight: '600' }}>Workflow Object</h4>
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontSize: '11px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
+                  color: '#64748b',
+                  maxHeight: '120px',
+                  overflowY: 'auto'
+                }}>
+                  {JSON.stringify(workflow, null, 2)}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+              </div>
 
-      {/* LLMs Section */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        marginBottom: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <button
-          onClick={() => setLlmsExpanded(!llmsExpanded)}
-          style={{
-            width: '100%',
-            padding: '16px 20px',
-            background: llmsExpanded ? '#faf5ff' : '#ffffff',
-            color: '#374151',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '15px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            borderBottom: llmsExpanded ? '1px solid #e5e7eb' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!llmsExpanded) {
-              e.currentTarget.style.background = '#faf5ff';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!llmsExpanded) {
-              e.currentTarget.style.background = '#ffffff';
-            }
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#8b5cf6',
-              marginRight: '12px'
-            }}></div>
-            LLMs for AI Node
-            <span style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              background: '#ede9fe',
-              color: '#5b21b6',
-              fontSize: '12px',
-              fontWeight: '600',
-              borderRadius: '12px'
-            }}>
-              {credentialForms?.filter(c => c.type === 'llm').length || 0}
-            </span>
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
+              <div>
+                <h4 style={{ margin: '0 0 8px 0', color: '#111827', fontSize: '13px', fontWeight: '600' }}>Node Types</h4>
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontSize: '11px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
+                  color: '#64748b',
+                  maxHeight: '100px',
+                  overflowY: 'auto'
+                }}>
+                  {JSON.stringify(nodeTypes, null, 2)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Node Actions Section */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <button
+            onClick={() => setNodeActionsExpanded(!nodeActionsExpanded)}
             style={{
-              transform: llmsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
+              width: '100%',
+              padding: '16px 20px',
+              background: nodeActionsExpanded ? '#eff6ff' : '#ffffff',
+              color: '#374151',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '15px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              borderBottom: nodeActionsExpanded ? '1px solid #e5e7eb' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!nodeActionsExpanded) {
+                e.currentTarget.style.background = '#eff6ff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!nodeActionsExpanded) {
+                e.currentTarget.style.background = '#ffffff';
+              }
             }}
           >
-            <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        
-        {llmsExpanded && (
-          <div style={{ padding: '20px' }}>
-            <div style={{
-              display: 'grid',
-              gap: '16px',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
-            }}>
-              {credentialForms && credentialForms?.map((credentialForm) => {
-                if (credentialForm.type == 'llm') {
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#3b82f6',
+                marginRight: '12px'
+              }}></div>
+              Node Actions
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                background: '#e0e7ff',
+                color: '#3730a3',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '12px'
+              }}>
+                {nodeActions?.length || 0}
+              </span>
+            </div>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: nodeActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {nodeActionsExpanded && (
+            <div style={{ padding: '20px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
+              }}>
+                {nodeActions && nodeActions.map((nodeAction: any) => {
+                  const isAINode = nodeAction.type === 'aiNode';
                   return (
-                    <div
-                      key={credentialForm._id}
-                      draggable
+                    <div draggable
                       style={{
                         padding: '16px',
                         border: '2px solid transparent',
                         borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #ede9fe 0%, #faf5ff 100%)',
+                        background: isAINode ? 'linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)' : 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)',
                         textAlign: 'center',
                         cursor: 'grab',
                         transition: 'all 0.2s ease',
                         position: 'relative',
                         overflow: 'hidden'
                       }}
-                      onDragStart={onDragStart(credentialForm, 'llm')}
+                      key={nodeAction._id}
+                      onDragStart={onDragStart(nodeAction, isAINode ? 'aiNode' : 'node')}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.transform = 'translateY(-3px)';
-                        e.currentTarget.style.borderColor = '#8b5cf6';
-                        e.currentTarget.style.boxShadow = '0 8px 25px rgba(139, 92, 246, 0.15)';
+                        e.currentTarget.style.borderColor = isAINode ? '#3b82f6' : '#10b981';
+                        e.currentTarget.style.boxShadow = `0 8px 25px ${isAINode ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)'}`;
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateY(0)';
@@ -1325,17 +1022,17 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                         right: '8px',
                         fontSize: '18px'
                       }}>
-                        🧠
+                        {isAINode ? '🤖' : '⚡'}
                       </div>
                       <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
                         <strong style={{
-                          color: '#5b21b6',
+                          color: isAINode ? '#1e40af' : '#065f46',
                           fontSize: '14px',
                           fontWeight: '600',
                           display: 'block',
                           marginBottom: '4px'
                         }}>
-                          {credentialForm.name}
+                          {nodeAction.name}
                         </strong>
                         <span style={{
                           fontSize: '11px',
@@ -1345,7 +1042,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                           borderRadius: '8px',
                           fontWeight: '500'
                         }}>
-                          LLM
+                          {isAINode ? 'AI Node' : 'Node'} Action
                         </span>
                       </div>
                       <details style={{ textAlign: 'left', marginTop: '8px' }}>
@@ -1370,118 +1067,116 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                           maxHeight: '100px',
                           overflowY: 'auto'
                         }}>
-                          {JSON.stringify(credentialForm, null, 2)}
+                          {JSON.stringify(nodeAction, null, 2)}
                         </div>
                       </details>
                     </div>
                   )
-                }
-              })}
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* Tools Section */}
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '12px',
-        marginBottom: '12px',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <button
-          onClick={() => setToolsExpanded(!toolsExpanded)}
-          style={{
-            width: '100%',
-            padding: '16px 20px',
-            background: toolsExpanded ? '#f0fdfa' : '#ffffff',
-            color: '#374151',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '15px',
-            fontWeight: '500',
-            transition: 'all 0.2s ease',
-            borderBottom: toolsExpanded ? '1px solid #e5e7eb' : 'none'
-          }}
-          onMouseEnter={(e) => {
-            if (!toolsExpanded) {
-              e.currentTarget.style.background = '#f0fdfa';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!toolsExpanded) {
-              e.currentTarget.style.background = '#ffffff';
-            }
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#14b8a6',
-              marginRight: '12px'
-            }}></div>
-            Available Tools
-            <span style={{
-              marginLeft: '8px',
-              padding: '2px 8px',
-              background: '#ccfbf1',
-              color: '#134e4a',
-              fontSize: '12px',
-              fontWeight: '600',
-              borderRadius: '12px'
-            }}>
-              {toolForms?.length || 0}
-            </span>
-          </div>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
+        {/* Trigger Actions Section */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <button
+            onClick={() => setTriggerActionsExpanded(!triggerActionsExpanded)}
             style={{
-              transform: toolsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease'
+              width: '100%',
+              padding: '16px 20px',
+              background: triggerActionsExpanded ? '#fef3c7' : '#ffffff',
+              color: '#374151',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '15px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              borderBottom: triggerActionsExpanded ? '1px solid #e5e7eb' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!triggerActionsExpanded) {
+                e.currentTarget.style.background = '#fef3c7';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!triggerActionsExpanded) {
+                e.currentTarget.style.background = '#ffffff';
+              }
             }}
           >
-            <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-        
-        {toolsExpanded && (
-          <div style={{ padding: '20px' }}>
-            <div style={{
-              display: 'grid',
-              gap: '16px',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
-            }}>
-              {toolForms && toolForms?.map((toolForm) => {
-                return (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#f59e0b',
+                marginRight: '12px'
+              }}></div>
+              Trigger Actions
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                background: '#fef3c7',
+                color: '#92400e',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '12px'
+              }}>
+                {triggerActions?.length || 0}
+              </span>
+            </div>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: triggerActionsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {triggerActionsExpanded && (
+            <div style={{ padding: '20px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
+              }}>
+                {triggerActions?.map((triggerAction) => (
                   <div
-                    key={toolForm._id}
+                    key={triggerAction._id}
                     draggable
                     style={{
                       padding: '16px',
                       border: '2px solid transparent',
                       borderRadius: '12px',
-                      background: 'linear-gradient(135deg, #ccfbf1 0%, #f0fdfa 100%)',
+                      background: 'linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)',
                       textAlign: 'center',
                       cursor: 'grab',
                       transition: 'all 0.2s ease',
                       position: 'relative',
                       overflow: 'hidden'
                     }}
-                    onDragStart={onDragStart(toolForm, 'tool')}
+                    onDragStart={onDragStart(triggerAction, 'trigger')}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = 'translateY(-3px)';
-                      e.currentTarget.style.borderColor = '#14b8a6';
-                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(20, 184, 166, 0.15)';
+                      e.currentTarget.style.borderColor = '#f59e0b';
+                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(245, 158, 11, 0.15)';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = 'translateY(0)';
@@ -1495,17 +1190,17 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                       right: '8px',
                       fontSize: '18px'
                     }}>
-                      🛠️
+                      🎯
                     </div>
                     <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
                       <strong style={{
-                        color: '#134e4a',
+                        color: '#92400e',
                         fontSize: '14px',
                         fontWeight: '600',
                         display: 'block',
                         marginBottom: '4px'
                       }}>
-                        {toolForm.name}
+                        {triggerAction.name}
                       </strong>
                       <span style={{
                         fontSize: '11px',
@@ -1515,7 +1210,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                         borderRadius: '8px',
                         fontWeight: '500'
                       }}>
-                        Tool
+                        Trigger Action
                       </span>
                     </div>
                     <details style={{ textAlign: 'left', marginTop: '8px' }}>
@@ -1540,16 +1235,355 @@ export default function Workflow({ username, slug }: { username: string, slug: s
                         maxHeight: '100px',
                         overflowY: 'auto'
                       }}>
-                        {JSON.stringify(toolForm, null, 2)}
+                        {JSON.stringify(triggerAction, null, 2)}
                       </div>
                     </details>
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+
+        {/* LLMs Section */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <button
+            onClick={() => setLlmsExpanded(!llmsExpanded)}
+            style={{
+              width: '100%',
+              padding: '16px 20px',
+              background: llmsExpanded ? '#faf5ff' : '#ffffff',
+              color: '#374151',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '15px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              borderBottom: llmsExpanded ? '1px solid #e5e7eb' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!llmsExpanded) {
+                e.currentTarget.style.background = '#faf5ff';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!llmsExpanded) {
+                e.currentTarget.style.background = '#ffffff';
+              }
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#8b5cf6',
+                marginRight: '12px'
+              }}></div>
+              LLMs for AI Node
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                background: '#ede9fe',
+                color: '#5b21b6',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '12px'
+              }}>
+                {credentialForms?.filter(c => c.type === 'llm').length || 0}
+              </span>
+            </div>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: llmsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {llmsExpanded && (
+            <div style={{ padding: '20px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
+              }}>
+                {credentialForms && credentialForms?.map((credentialForm) => {
+                  if (credentialForm.type == 'llm') {
+                    return (
+                      <div
+                        key={credentialForm._id}
+                        draggable
+                        style={{
+                          padding: '16px',
+                          border: '2px solid transparent',
+                          borderRadius: '12px',
+                          background: 'linear-gradient(135deg, #ede9fe 0%, #faf5ff 100%)',
+                          textAlign: 'center',
+                          cursor: 'grab',
+                          transition: 'all 0.2s ease',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                        onDragStart={onDragStart(credentialForm, 'llm')}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-3px)';
+                          e.currentTarget.style.borderColor = '#8b5cf6';
+                          e.currentTarget.style.boxShadow = '0 8px 25px rgba(139, 92, 246, 0.15)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = 'transparent';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          fontSize: '18px'
+                        }}>
+                          🧠
+                        </div>
+                        <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
+                          <strong style={{
+                            color: '#5b21b6',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            display: 'block',
+                            marginBottom: '4px'
+                          }}>
+                            {credentialForm.name}
+                          </strong>
+                          <span style={{
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            background: '#ffffff',
+                            padding: '2px 8px',
+                            borderRadius: '8px',
+                            fontWeight: '500'
+                          }}>
+                            LLM
+                          </span>
+                        </div>
+                        <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                          <summary style={{
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            fontWeight: '500',
+                            padding: '4px 0'
+                          }}>
+                            View details
+                          </summary>
+                          <div style={{
+                            fontSize: '10px',
+                            color: '#6b7280',
+                            background: '#ffffff',
+                            border: '1px solid #e5e7eb',
+                            padding: '8px',
+                            borderRadius: '6px',
+                            marginTop: '6px',
+                            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
+                            maxHeight: '100px',
+                            overflowY: 'auto'
+                          }}>
+                            {JSON.stringify(credentialForm, null, 2)}
+                          </div>
+                        </details>
+                      </div>
+                    )
+                  }
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tools Section */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '12px',
+          marginBottom: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+        }}>
+          <button
+            onClick={() => setToolsExpanded(!toolsExpanded)}
+            style={{
+              width: '100%',
+              padding: '16px 20px',
+              background: toolsExpanded ? '#f0fdfa' : '#ffffff',
+              color: '#374151',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '15px',
+              fontWeight: '500',
+              transition: 'all 0.2s ease',
+              borderBottom: toolsExpanded ? '1px solid #e5e7eb' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (!toolsExpanded) {
+                e.currentTarget.style.background = '#f0fdfa';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!toolsExpanded) {
+                e.currentTarget.style.background = '#ffffff';
+              }
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#14b8a6',
+                marginRight: '12px'
+              }}></div>
+              Available Tools
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                background: '#ccfbf1',
+                color: '#134e4a',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '12px'
+              }}>
+                {toolForms?.length || 0}
+              </span>
+            </div>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              style={{
+                transform: toolsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.2s ease'
+              }}
+            >
+              <path d="M6 9l6 6 6-6" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {toolsExpanded && (
+            <div style={{ padding: '20px' }}>
+              <div style={{
+                display: 'grid',
+                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))'
+              }}>
+                {toolForms && toolForms?.map((toolForm) => {
+                  return (
+                    <div
+                      key={toolForm._id}
+                      draggable
+                      style={{
+                        padding: '16px',
+                        border: '2px solid transparent',
+                        borderRadius: '12px',
+                        background: 'linear-gradient(135deg, #ccfbf1 0%, #f0fdfa 100%)',
+                        textAlign: 'center',
+                        cursor: 'grab',
+                        transition: 'all 0.2s ease',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}
+                      onDragStart={onDragStart(toolForm, 'tool')}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-3px)';
+                        e.currentTarget.style.borderColor = '#14b8a6';
+                        e.currentTarget.style.boxShadow = '0 8px 25px rgba(20, 184, 166, 0.15)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        fontSize: '18px'
+                      }}>
+                        🛠️
+                      </div>
+                      <div style={{ marginBottom: '12px', paddingTop: '8px' }}>
+                        <strong style={{
+                          color: '#134e4a',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          display: 'block',
+                          marginBottom: '4px'
+                        }}>
+                          {toolForm.name}
+                        </strong>
+                        <span style={{
+                          fontSize: '11px',
+                          color: '#6b7280',
+                          background: '#ffffff',
+                          padding: '2px 8px',
+                          borderRadius: '8px',
+                          fontWeight: '500'
+                        }}>
+                          Tool
+                        </span>
+                      </div>
+                      <details style={{ textAlign: 'left', marginTop: '8px' }}>
+                        <summary style={{
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          color: '#6b7280',
+                          fontWeight: '500',
+                          padding: '4px 0'
+                        }}>
+                          View details
+                        </summary>
+                        <div style={{
+                          fontSize: '10px',
+                          color: '#6b7280',
+                          background: '#ffffff',
+                          border: '1px solid #e5e7eb',
+                          padding: '8px',
+                          borderRadius: '6px',
+                          marginTop: '6px',
+                          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, monospace',
+                          maxHeight: '100px',
+                          overflowY: 'auto'
+                        }}>
+                          {JSON.stringify(toolForm, null, 2)}
+                        </div>
+                      </details>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
         Reactflow canvas
         <div ref={reactFlowWrapper} style={{ width: '100%', height: '80vh' }}>
