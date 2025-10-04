@@ -8,9 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@xyflow/react": "^12.8.5",
     "axios": "^1.12.2",
-    "bun": "^1.2.23",
+    "jsonwebtoken": "^9.0.2",
     "next": "15.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -21,6 +22,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "bun": "^1.2.23",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

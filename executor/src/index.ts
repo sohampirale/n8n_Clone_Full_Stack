@@ -1,14 +1,10 @@
 import dotenv from "dotenv"
 dotenv.config()
-import { getRedisClient } from "./helpers/redisClient"
 import Executor, { waitingToolInstances } from "./lib/Executor"
 import type { IstartExecutionObject } from "./interfaces"
 import { connectDB } from "./lib/connectDB"
 import { createClient } from "redis";
-import mongoose, { mongo } from "mongoose"
-import { Node, NodeInstance } from "./models/node.model"
 import { ToolInstance } from "./models/tool.model"
-import { tool } from "@langchain/core/tools"
 
 const executorsMap=new Map()
 

@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 
 export default async function authMiddleware(req:Request,res:Response,next:NextFunction){
     try {
+        
         const accessToken = req.cookies?.accessToken
         if(!accessToken){
             return res.status(400).json(

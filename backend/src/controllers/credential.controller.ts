@@ -108,9 +108,9 @@ export async function createCredential(req:Request,res:Response){
     const requiredFields=credentialForm.requiredFields
 
     for(let i=0;i<requiredFields.length;i++){
-      if(typeof data[requiredFields[i]]!=='string' || !data[requiredFields[i]]){
+      if( !data[requiredFields[i]] ||typeof data[requiredFields[i]]!=='string' ){
         return res.status(400).json(
-          new ApiResponse(false,`Invalid/Insufficient data provided, ${requiredFields[i]} not found`)
+          new ApiResponse(false,`Invalid/Insufficient data provided`)
         )
       }
     }

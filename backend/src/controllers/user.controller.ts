@@ -85,6 +85,9 @@ export async function userSignin(req: Request, res: Response) {
         return res
           .cookie("accessToken",accessToken,{
               httpOnly: true, 
+              sameSite:"none",
+              secure:true,
+              path:"/"
           })
           .status(200).json(
               new ApiResponse(true, "Login successfull")
