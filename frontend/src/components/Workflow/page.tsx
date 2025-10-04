@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ReactFlow, applyNodeChanges, applyEdgeChanges, addEdge, Background, Controls, Position, Handle, ReactFlowProvider, NodeTypes, useStoreApi } from '@xyflow/react';
 import { axiosInstance } from "@/helpers/axios";
 import { ReactFlowNode, ReactFlowAINode, ReactFlowTriggerNode, ReactFlowLLM, ReactFlowTool, Trigger_telegram_on_message, WebhookTriggerNode, ManualClickTriggerNode, TelegramSendMessageNode, AIActionNode, TelegramSendAndWaitNode, GmailSendEmailNode, createToolFormNode, createTriggerNode, createLLMNode } from './ReactFlow/Nodes';
+import Modal from './Modal/Modal';
 
 // const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }];
 // const initialNodes = [
@@ -38,7 +39,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   const [triggerActions, setTriggerActions] = useState([])
   const [nodeActions, setNodeActions] = useState([])
   const [toolForms, setToolForms] = useState([])
-  const [userCredentials, setUserCredentials] = useState(null)
+  const [userCredentials, setUserCredentials] = useState([])
   const [credentialForms, setCredentialForms] = useState([])
 
   const [workflow, setWorkflow] = useState({
@@ -60,6 +61,13 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   const [triggerActionsExpanded, setTriggerActionsExpanded] = useState(false);
   const [llmsExpanded, setLlmsExpanded] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
+
+  const [showModal,setShowModal]=useState(false)
+  const [doubleClickedNode,setDoubleClickedNode]=useState(false)
+
+  function handlerOnDoubleClicked(event: React.MouseEvent,node: Node){
+    console.log("Double-clicked node:", node);
+  }
 
   const [createdObjects, setCreatedObjects] = useState({
     node: [],
@@ -156,7 +164,6 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     console.log('Generated nodeTypes:', types);
     return types;
   }, [nodeActions, triggerActions, credentialForms, toolForms]); // Dependency on nodeActions and triggerActions
-
 
   const onNodesChange = (changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds))
@@ -585,7 +592,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     try {
       const { data: response } = await axiosInstance.get(`/api/v1/credential`)
 
-      console.log('user credentials : ', response.data);
+      console.log('all user credentials : ', response.data);
       setUserCredentials(response.data)
     } catch (error) {
       console.log('failed to fetch node actions from BE : ', error);
@@ -608,7 +615,7 @@ export default function Workflow({ username, slug }: { username: string, slug: s
     fetchAllTriggerActions()
     fetchAllNodeActions()
     fetchAllToolForms()
-    // fetchAllUserCredentials()
+    fetchAllUserCredentials()
     fetchAllCredentialForms()
 
   }, [])
@@ -635,6 +642,26 @@ export default function Workflow({ username, slug }: { username: string, slug: s
   return (
     <>
       <ReactFlowProvider>
+
+        {showModal && doubleClickedNode &&
+         <Modal doubleClickedNode={doubleClickedNode}
+              setShowModal={setShowModal}
+              workflow={workflow} 
+              setWorkflow={setWorkflow} 
+              allFetchedData={{
+                nodeActions,
+                triggerActions,
+                toolForms,
+                credentialForms,
+                userCredentials
+              }}
+          />}
+        <p>--------------</p>
+        <p>workflow obj</p>
+        {JSON.stringify(workflow)}
+        <p>------------------</p>
+        <p>All user credentials</p>
+        {JSON.stringify(userCredentials)}
         <button onClick={helperUpdateWorkflow}>Update workflow </button>
         {/* <div>
           <p>workflow obj</p>
@@ -1583,6 +1610,10 @@ export default function Workflow({ username, slug }: { username: string, slug: s
             onDragOver={onDragOver}
             onDrop={onDrop}
             fitView
+            onNodeDoubleClick={(event:any,node:any)=>{
+              setShowModal(true)
+              setDoubleClickedNode(node);
+            }}
           >
             <Background />
             <Controls />

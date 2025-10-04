@@ -52,7 +52,12 @@ export async function getAllCredentialsOfUser(req:Request,res:Response){
           from:"credentialforms",
           localField:"credentialFormId",
           foreignField:"_id",
-          as:"CredentialForm"
+          as:"credentialForm"
+        }
+      },{
+        $unwind:{
+          path:"$credentialForm",
+          preserveNullAndEmptyArrays:true
         }
       }
     ])
