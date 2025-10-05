@@ -154,19 +154,35 @@ export default class Executor {
 
                 if (nodeActionName == 'telegram_send_message') {
                     console.log('node instance to be started is : action:telegram_send_message');
+                    const node= allSolelyDependentNodes[i]
+                    console.log('node.credential.credentialForm : ',node.credential.credentialForm);
+                    
+                     if(!node.credential){
+                        console.log('Credential not foud for the telegram_send_message_and_wait_for_response node');
+                        continue;
+                    } else if(!node.credential.credentialForm){
+                        console.log('Credential Form not foud for the telegram_send_message_and_wait_for_response node');
+                        continue;
+                    } else if(node.credential.credentialForm.name!='telegram'){
+                        console.log('Incorrect credential attached to the telegram_send_message_and_wait_for_response node');
+                        continue;
+                    } else if(!node.credential.data.bot_token){
+                        console.log('bot_token not found in the telegram credential attached to the  the telegram_send_message_and_wait_for_response node');
+                        continue;
+                    }
+
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
                     this.telegram_send_message(allSolelyDependentNodes[i],inData)
                 } else if (nodeActionName == 'gmail_send_email') {
+                    //TODOD add all checks for only gmail_send_email here
                     console.log('node instance to be started is : action:gmail_send_email');
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
                     this.gmail_send_email(allSolelyDependentNodes[i], inData);
                 } else if (nodeActionName == 'telegram_send_message_and_wait_for_response') {
-                    // const node= await Node.aggregate()
                     //all checks that are personal to the telegram_send_message_and_wait_for_response
                     const node = allSolelyDependentNodes[i]
-                    //TODO uncomment lines below after completing frontend
                     // if(!node.credential){
                     //     console.log('Credential not foud for the telegram_send_message_and_wait_for_response node');
                     //     continue;

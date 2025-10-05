@@ -280,15 +280,29 @@ export function TelegramSendMessageModal({ doubleClickedNode, workflow, setWorkf
                 if (requestedNode && requestedNode.length != 0) {
                     requestedNode = requestedNode[0]
                     let data = requestedNode.data
+                    const selectedTelegramCredential = requestedNode.credentialId
+                    if(selectedTelegramCredential){
+                        setSelectedTelegramCredential(selectedTelegramCredential)
+                    } else {
+                        let resendCredential = userCredentials.filter((credential)=>credential.credentialForm.name=='telegram')
+                        if(resendCredential){
+                            const selectedTelegramCredential=resendCredential[0]._id
+                            setSelectedTelegramCredential(selectedTelegramCredential)
+                            requestedNode.credentialId=selectedTelegramCredential
+                        }
+                    }
+
                     if (data) {
                         const text = data.text
                         const chat_id = data.chat_id
                         if (text) {
                             setText(text)
                         } else setText('')
+
                         if (chat_id) {
                             setChatId(chat_id)
                         } else setChatId("")
+
                     } else {
                         const text = ""
                         const chat_id = ""
