@@ -1,4 +1,4 @@
-import { GmailSendEmailModal, TelegramOnMessageModal, TelegramSendMessageModal, WebhookFormModal } from "./AllModals"
+import { AINodeModal, GmailSendEmailModal, TelegramOnMessageModal, TelegramSendMessageModal, WebhookFormModal } from "./AllModals"
 
 export default function Modal({doubleClickedNode,setShowModal,workflow,setWorkflow,allFetchedData}:{doubleClickedNode:any,setShowModal:any,workflow:any,setWorkflow:any,allFetchedData:any}){
     console.log('inside Modal doubleClickedNode: ',doubleClickedNode);
@@ -13,6 +13,8 @@ export default function Modal({doubleClickedNode,setShowModal,workflow,setWorkfl
             return <TelegramSendMessageModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow} allFetchedData={allFetchedData}/>
         } else if(type=='gmail_send_email'){
             return <GmailSendEmailModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow} allFetchedData={allFetchedData}/>
+        } else if(type=='aiNode'){
+            return <AINodeModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow} />
         }
         else return (<>Requested modal not yet formed</>)
     }

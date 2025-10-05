@@ -734,3 +734,139 @@ export function GmailSendEmailModal({ doubleClickedNode, workflow, setWorkflow, 
         </>
     )
 }
+
+export function AINodeModal({ doubleClickedNode, workflow, setWorkflow, allFetchedData }: { doubleClickedNode: any, workflow: any, setWorkflow: any, allFetchedData: any }){
+    const [systemQuery,setSystemQuery]=useState("")
+    const [userQuery,setUserQuery]=useState("")
+
+    useEffect(() => {
+        console.log('inside useEffect');
+
+        try {
+            const requestedNodes = workflow?.requestedNodes
+            if (requestedNodes) {
+                let requestedNode = requestedNodes.filter((node: any) => {
+                    return node.identityNo == doubleClickedNode.id
+                })
+
+                if (requestedNode && requestedNode.length != 0) {
+                    requestedNode = requestedNode[0]
+                    let data = requestedNode.data
+                    if (data) {
+                        const {systemQuery,userQuery} = data;
+
+                        if (systemQuery) {
+                            setSystemQuery(systemQuery)
+                        } else setSystemQuery('')
+
+                        if (userQuery) {
+                            setUserQuery(userQuery)
+                        } else setUserQuery("")
+
+
+
+                    } else {
+                        const systemQuery = ""
+                        const userQuery = ""
+                      
+
+                        setSystemQuery(systemQuery)
+                        setUserQuery(userQuery)
+                    
+
+                        data = {
+                            systemQuery,
+                            userQuery, //TODO : Muster.render the userQuery with inData at the executor side
+                            position: doubleClickedNode.position
+                        }
+                        requestedNode.data = data
+                    }
+
+                    setWorkflow({
+                        ...workflow
+                    })
+                }
+            }
+        } catch (error) {
+
+        }
+    }, [doubleClickedNode.id])
+
+    function handleChangeSystemQuery(e:any){
+        const systemQuery=e.target.value
+        setSystemQuery(systemQuery)
+
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested ai node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.systemQuery = systemQuery
+                data.userQuery= userQuery              
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    systemQuery,
+                    userQuery,
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+      function handleChangeUserQuery(e:any){
+        const userQuery=e.target.value
+        setUserQuery(userQuery)
+
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested ai node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.systemQuery = systemQuery
+                data.userQuery= userQuery              
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    systemQuery,
+                    userQuery,
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+    return ( <>
+        <input type="text" value={systemQuery} onChange={handleChangeSystemQuery} />
+        <input type="text" value={userQuery} onChange={handleChangeUserQuery} />
+        
+    </>)
+}
