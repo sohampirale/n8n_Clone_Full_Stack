@@ -11,6 +11,10 @@ const toolFormSchema = new Schema({
     type: String,
     required: true
   },
+  systemQuery:{
+    type:String,
+    default:""
+  },
   schema: {
     type: Schema.Types.Mixed,
     default: {}

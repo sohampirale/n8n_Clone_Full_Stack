@@ -74,7 +74,7 @@ export default class Executor {
             ['wikipedia_search', this.wikipediaFn],
             ["telegram_send_message_and_wait_for_response", this.telegram_send_message_and_wait_for_response_toolFN]
         ])
-        this.waitingToolInstances=new Map()
+        this.waitingToolInstances = new Map()
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -154,26 +154,26 @@ export default class Executor {
 
                 if (nodeActionName == 'telegram_send_message') {
                     console.log('node instance to be started is : action:telegram_send_message');
-                    const node= allSolelyDependentNodes[i]
-                    console.log('node.credential.credentialForm : ',node.credential.credentialForm);
-                    
-                     if(!node.credential){
+                    const node = allSolelyDependentNodes[i]
+                    console.log('node.credential.credentialForm : ', node.credential.credentialForm);
+
+                    if (!node.credential) {
                         console.log('Credential not foud for the telegram_send_message_and_wait_for_response node');
                         continue;
-                    } else if(!node.credential.credentialForm){
+                    } else if (!node.credential.credentialForm) {
                         console.log('Credential Form not foud for the telegram_send_message_and_wait_for_response node');
                         continue;
-                    } else if(node.credential.credentialForm.name!='telegram'){
+                    } else if (node.credential.credentialForm.name != 'telegram') {
                         console.log('Incorrect credential attached to the telegram_send_message_and_wait_for_response node');
                         continue;
-                    } else if(!node.credential.data.bot_token){
+                    } else if (!node.credential.data.bot_token) {
                         console.log('bot_token not found in the telegram credential attached to the  the telegram_send_message_and_wait_for_response node');
                         continue;
                     }
 
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
-                    this.telegram_send_message(allSolelyDependentNodes[i],inData)
+                    this.telegram_send_message(allSolelyDependentNodes[i], inData)
                 } else if (nodeActionName == 'gmail_send_email') {
                     //TODOD add all checks for only gmail_send_email here
                     console.log('node instance to be started is : action:gmail_send_email');
@@ -225,7 +225,7 @@ export default class Executor {
      */
 
     async telegram_send_message(node: any, inData: any) {
-        console.log('inside telegram_send_message node : ',node);
+        console.log('inside telegram_send_message node : ', node);
 
         try {
 
@@ -253,7 +253,7 @@ export default class Executor {
                 throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
             }
 
-            let {chat_id,text}=node.data
+            let { chat_id, text } = node.data
             //:TODO uncomment line above and remove line below
             // let chat_id = '940083925', text = 'Hello sir, this message is sent by n8n_clone using telegram_send_message node'
 
@@ -517,12 +517,28 @@ export default class Executor {
             }
 
             if (prerequisiteNodesIds && prerequisiteNodesIds.length != 0) {
-                preqrequisiteNodesInstances = await NodeInstance.find({
-                    workflowInstanceId: this.workflowInstanceId,
-                    nodeId: {
-                        $in: prerequisiteNodesIds
+                console.log('this.workflowInstanceId : ',this.workflowInstanceId);
+                console.log('prerequisiteNodesIds  : ',prerequisiteNodesIds);
+                
+                preqrequisiteNodesInstances = await NodeInstance.aggregate([
+                    {
+                        $match:{
+                            workflowInstanceId:new mongoose.Types.ObjectId(this.workflowInstanceId),
+                        }
                     }
+                ])
+                console.log('totalFetched instances : ',preqrequisiteNodesInstances.length);
+                
+                preqrequisiteNodesInstances=preqrequisiteNodesInstances.filter((nodeInstance)=>{
+                    for(let i=0;i<prerequisiteNodesIds.length;i++){
+                        if(prerequisiteNodesIds[i]?.equals(nodeInstance.nodeId)){
+                            return true
+                        }
+                    }
+                    return false
                 })
+                console.log('inside inDataProducer prerequisiteNodesInstances : ',preqrequisiteNodesInstances);
+
             }
 
             if (triggerInstance) {
@@ -530,6 +546,7 @@ export default class Executor {
             }
 
             for (let i = 0; i < preqrequisiteNodesInstances.length; i++) {
+
                 Object.assign(inData, preqrequisiteNodesInstances[i]?.outData)
             }
 
@@ -555,7 +572,7 @@ export default class Executor {
      * 5.call the handle_next_node_execution
      */
     async gmail_send_email(node: any, inData: any) {
-        console.log('inside gmail_send_email');
+        console.log('inside gmail_send_email inData : ',inData);
 
         try {
             const nodeId = node._id
@@ -759,7 +776,8 @@ export default class Executor {
 
             const nodeActionName = node.nodeAction?.name
             inData = await this.inDataProducer(nodeId)
-
+            console.log('inData produced by callRespectiveHandler : ',inData);
+            
             //:TODO uncomment few checks in each handler selection that are commented out until frontend is made
             console.log('nodeActionName : ', nodeActionName);
 
@@ -1008,7 +1026,12 @@ export default class Executor {
 
 
             const agentTools: any = [];
+            let systemQuery = ``;
+            let userQuery=``
 
+            // systemQuery+=node.data?.systemQuery
+
+             userQuery += node.data?.userQuery
             const tools = node.tools;
             for (let i = 0; i < tools.length; i++) {
                 const toolFormName = tools[i]?.toolForm?.name
@@ -1031,6 +1054,10 @@ export default class Executor {
 
                     const toolFn = this.toolFunctionMap.get(toolFormName)
                     console.log('description : ', tools[i].toolForm.description);
+                    const toolSystemQuery = tools[i].toolForm?.systemQuery
+                    console.log('toolSystemQuery : ',toolSystemQuery);
+                    
+                    systemQuery+=`Tool name :${toolFormName}, Its Rules : ${toolSystemQuery}`
                     const tool = new DynamicTool({
                         name: toolFormName,
                         description: tools[i]?.toolForm?.description,
@@ -1045,6 +1072,8 @@ export default class Executor {
                 }
             }
 
+
+
             // const systemPrompt = `You are a helpful assistent and part of the AI workflow management software 
             // who uses tools given to him to respond when needed to users when possible as well as uses your own tools when needed(sending telegram messages and waiting for response)
             // ,
@@ -1055,143 +1084,142 @@ export default class Executor {
             // ,use telegram tool to keep talking with the client and gather information about them such s i.name ii.age iii.city in which they live in frinedly tone, but do not STOP using this tool until we have received all 3 required field name age cityName 
             // `;
 
-//             const systemPrompt = `# AI Workflow Assistant - System Instructions
+            //             const systemPrompt = `# AI Workflow Assistant - System Instructions
 
-// ## Core Identity
-// You are an intelligent workflow assistant integrated into an AI workflow management platform. Your primary mission is to gather complete user information through natural, friendly conversation via Telegram.
+            // ## Core Identity
+            // You are an intelligent workflow assistant integrated into an AI workflow management platform. Your primary mission is to gather complete user information through natural, friendly conversation via Telegram.
 
-// ## Required Information Collection
-// You MUST collect these three fields before concluding the conversation:
-// 1. **name** - User's full name
-// 2. **age** - User's age (numeric value)
-// 3. **cityName** - City where the user currently lives
+            // ## Required Information Collection
+            // You MUST collect these three fields before concluding the conversation:
+            // 1. **name** - User's full name
+            // 2. **age** - User's age (numeric value)
+            // 3. **cityName** - City where the user currently lives
 
-// ### Collection Status Tracking
-// - Keep mental track of which fields you have successfully collected
-// - DO NOT mark a field as collected until you receive a clear, valid response
-// - If a response is ambiguous or incomplete, ask for clarification
+            // ### Collection Status Tracking
+            // - Keep mental track of which fields you have successfully collected
+            // - DO NOT mark a field as collected until you receive a clear, valid response
+            // - If a response is ambiguous or incomplete, ask for clarification
 
-// ## Tool Usage Guidelines
-// Before stopping the use of tools and ending the chat ask tehm if they need any help and keep helping and talkign back to them until they are satisfied
+            // ## Tool Usage Guidelines
+            // Before stopping the use of tools and ending the chat ask tehm if they need any help and keep helping and talkign back to them until they are satisfied
 
-// ### Primary Tool: Telegram Communication
-// - Use the Telegram tool as your PRIMARY communication channel
-// - Each message should feel natural and conversational, never robotic
-// - Continue using the tool in a loop until ALL three required fields are collected
-// - Never assume information - always wait for explicit user responses
+            // ### Primary Tool: Telegram Communication
+            // - Use the Telegram tool as your PRIMARY communication channel
+            // - Each message should feel natural and conversational, never robotic
+            // - Continue using the tool in a loop until ALL three required fields are collected
+            // - Never assume information - always wait for explicit user responses
 
-// ### Secondary Tools
-// - Use any additional tools at your disposal when they enhance the user experience
-// - Examples: data validation, city verification, age range checking
-// - Tools should support, not replace, the main conversation flow
+            // ### Secondary Tools
+            // - Use any additional tools at your disposal when they enhance the user experience
+            // - Examples: data validation, city verification, age range checking
+            // - Tools should support, not replace, the main conversation flow
 
-// ## Conversation Flow Strategy
+            // ## Conversation Flow Strategy
 
-// ### Opening (If no data collected)
-// - Greet warmly and introduce yourself
-// - Explain briefly that you'd like to get to know them better
-// - Ask for the first piece of information naturally
+            // ### Opening (If no data collected)
+            // - Greet warmly and introduce yourself
+            // - Explain briefly that you'd like to get to know them better
+            // - Ask for the first piece of information naturally
 
-// Example: "Hi there! 👋 I'm your AI assistant. I'd love to get to know you better so I can help you more effectively. What's your name?"
+            // Example: "Hi there! 👋 I'm your AI assistant. I'd love to get to know you better so I can help you more effectively. What's your name?"
 
-// ### Middle (Partial data collected)
-// - Acknowledge each response positively
-// - Smoothly transition to the next missing field
-// - Use the information already collected to personalize questions
+            // ### Middle (Partial data collected)
+            // - Acknowledge each response positively
+            // - Smoothly transition to the next missing field
+            // - Use the information already collected to personalize questions
 
-// Example: "Nice to meet you, Sarah! And how old are you?"
+            // Example: "Nice to meet you, Sarah! And how old are you?"
 
-// ### Handling Edge Cases
-// - **Unclear responses**: Politely ask for clarification
-//   - "I want to make sure I got that right. Could you confirm your age for me?"
-// - **Missing information**: Explicitly state what you still need
-//   - "Great! I have your name and age. Just need to know - which city do you live in?"
-// - **Resistance**: Be respectful but persistent
-//   - "I understand privacy is important. This information helps me provide better assistance. Your city name would be really helpful!"
+            // ### Handling Edge Cases
+            // - **Unclear responses**: Politely ask for clarification
+            //   - "I want to make sure I got that right. Could you confirm your age for me?"
+            // - **Missing information**: Explicitly state what you still need
+            //   - "Great! I have your name and age. Just need to know - which city do you live in?"
+            // - **Resistance**: Be respectful but persistent
+            //   - "I understand privacy is important. This information helps me provide better assistance. Your city name would be really helpful!"
 
-// ### Closing (All data collected)
-// - Confirm all collected information
-// - Thank the user warmly
-// - Indicate successful completion
+            // ### Closing (All data collected)
+            // - Confirm all collected information
+            // - Thank the user warmly
+            // - Indicate successful completion
 
-// Example: "Perfect! Let me confirm: Your name is John, you're 28 years old, and you live in Mumbai. Is that correct? Thank you so much for sharing this with me!"
+            // Example: "Perfect! Let me confirm: Your name is John, you're 28 years old, and you live in Mumbai. Is that correct? Thank you so much for sharing this with me!"
 
-// ## Critical Rules
+            // ## Critical Rules
 
-// ### MUST DO:
-// ✓ Use Telegram tool for EVERY user interaction
-// ✓ Maintain a friendly, conversational tone throughout
-// ✓ Validate each piece of information before marking as collected
-// ✓ Continue the conversation loop until all 3 fields are complete
-// ✓ Handle errors gracefully and retry if tool calls fail
-// ✓ Be patient with users who provide incomplete information
+            // ### MUST DO:
+            // ✓ Use Telegram tool for EVERY user interaction
+            // ✓ Maintain a friendly, conversational tone throughout
+            // ✓ Validate each piece of information before marking as collected
+            // ✓ Continue the conversation loop until all 3 fields are complete
+            // ✓ Handle errors gracefully and retry if tool calls fail
+            // ✓ Be patient with users who provide incomplete information
 
-// ### MUST NOT DO:
-// ✗ Stop the conversation before collecting all 3 required fields
-// ✗ Assume or infer information that wasn't explicitly provided
-// ✗ Use aggressive or pushy language
-// ✗ Move to the next field before confirming the current one
-// ✗ Accept invalid data (e.g., non-numeric age, obviously fake names)
-// ✗ Make the user feel interrogated - keep it conversational
+            // ### MUST NOT DO:
+            // ✗ Stop the conversation before collecting all 3 required fields
+            // ✗ Assume or infer information that wasn't explicitly provided
+            // ✗ Use aggressive or pushy language
+            // ✗ Move to the next field before confirming the current one
+            // ✗ Accept invalid data (e.g., non-numeric age, obviously fake names)
+            // ✗ Make the user feel interrogated - keep it conversational
 
-// ## Data Validation Guidelines
+            // ## Data Validation Guidelines
 
-// ### Name
-// - Should contain at least first name
-// - Can include full name (first + last)
-// - Reject single letters or obviously invalid entries
-// - Accept various cultural name formats
+            // ### Name
+            // - Should contain at least first name
+            // - Can include full name (first + last)
+            // - Reject single letters or obviously invalid entries
+            // - Accept various cultural name formats
 
-// ### Age
-// - Must be a numeric value
-// - Reasonable range: 13-120 years
-// - If unrealistic, politely ask for confirmation
-// - Accept age ranges only if user is uncomfortable with exact age
+            // ### Age
+            // - Must be a numeric value
+            // - Reasonable range: 13-120 years
+            // - If unrealistic, politely ask for confirmation
+            // - Accept age ranges only if user is uncomfortable with exact age
 
-// ### City Name
-// - Should be a recognizable city name
-// - Accept various spellings and languages
-// - If ambiguous (e.g., "Paris" - France or Texas?), ask for country
-// - Don't require country unless clarification is needed
+            // ### City Name
+            // - Should be a recognizable city name
+            // - Accept various spellings and languages
+            // - If ambiguous (e.g., "Paris" - France or Texas?), ask for country
+            // - Don't require country unless clarification is needed
 
-// ## Tone & Personality
-// - **Friendly**: Use warm, welcoming language
-// - **Professional**: Maintain respect and boundaries
-// - **Patient**: Don't rush the user
-// - **Adaptive**: Match the user's communication style (formal/casual)
-// - **Encouraging**: Use positive reinforcement ("Great!", "Perfect!", "Thanks!")
-// - **Human-like**: Use natural conversation patterns, occasional emojis (sparingly)
+            // ## Tone & Personality
+            // - **Friendly**: Use warm, welcoming language
+            // - **Professional**: Maintain respect and boundaries
+            // - **Patient**: Don't rush the user
+            // - **Adaptive**: Match the user's communication style (formal/casual)
+            // - **Encouraging**: Use positive reinforcement ("Great!", "Perfect!", "Thanks!")
+            // - **Human-like**: Use natural conversation patterns, occasional emojis (sparingly)
 
-// ## State Management
-// Internally track your progress:
-// - [ ] name_collected: false
-// - [ ] age_collected: false  
-// - [ ] city_collected: false
+            // ## State Management
+            // Internally track your progress:
+            // - [ ] name_collected: false
+            // - [ ] age_collected: false  
+            // - [ ] city_collected: false
 
-// Only mark a field as true when you have valid, confirmed data.
+            // Only mark a field as true when you have valid, confirmed data.
 
-// ## Error Recovery
-// If a tool call fails:
-// 1. Acknowledge the issue transparently
-// 2. Retry the operation
-// 3. If repeated failures, explain the situation politely
-// 4. Continue attempting to collect information
+            // ## Error Recovery
+            // If a tool call fails:
+            // 1. Acknowledge the issue transparently
+            // 2. Retry the operation
+            // 3. If repeated failures, explain the situation politely
+            // 4. Continue attempting to collect information
 
-// ## Completion Criteria
-// The conversation is complete ONLY when:
-// 1. All three fields (name, age, cityName) are collected
-// 2. Each field contains valid data
-// 3. User has confirmed the information (optional but recommended)
+            // ## Completion Criteria
+            // The conversation is complete ONLY when:
+            // 1. All three fields (name, age, cityName) are collected
+            // 2. Each field contains valid data
+            // 3. User has confirmed the information (optional but recommended)
 
-// Remember: Your success is measured by complete, accurate data collection while maintaining a positive user experience. Be thorough, be friendly, and be persistent!`;
+            // Remember: Your success is measured by complete, accurate data collection while maintaining a positive user experience. Be thorough, be friendly, and be persistent!`;
 
-            let systemQuery=`You are AI assistant and master AI Agent used in the AI powered workflow management system who is Really great in using tools provided to him as well using your own intelligence when needed, you do hold risk taking capabilities as well,`
-            systemQuery+=node.data?.systemQuery
-            const userQuery=node.data?.userQuery
-            console.log('final systemQuery : ',systemQuery);
-            console.log('final userQuery : ',userQuery);
 
-            
+            userQuery=`Query or Message reciuevd form user is : ${node?.data?.userQuery}`
+            systemQuery+=node?.data?.systemQuery
+
+            console.log('final systemQuery : ', systemQuery);
+            console.log('final userQuery : ', userQuery);
 
             // const systemPrompt = `You are a helpful assistent and part of the AI workflow management software, the sole purpose you have is using the telegram tool to send message and wait for response and collect information from the user via telegram "tool"!! KEEP TALKING with the user until you recived their 
             // i.Name
@@ -1225,8 +1253,8 @@ export default class Executor {
             console.log('result : ');
             console.log(result);
 
-            const llmRespponse = result.messages[result.messages.length - 1].content;
-            console.log("Final LLM Response:", llmRespponse);
+            const llmResponse = result.messages[result.messages.length - 1].content;
+            console.log("Final LLM Response:", llmResponse);
 
             //TODO : uncomment these lines below when frontend completed and remove the hardcoded jsonSchema
 
@@ -1240,15 +1268,23 @@ export default class Executor {
             }
 
             const parsedJson = await this.helper_jsonParser(result, jsonSchema, llm, userQuery)
-            
-            // } else {
-            // console.log('jsonRequired selected for aiNode but jsonSchema not defined');
-            // }
-            // }
 
-            aiNodeInstance.outData.llmRespponse = llmRespponse
-            Object.assign(aiNodeInstance.outData, parsedJson)
+    
+
+            aiNodeInstance.outData.llmResponse = llmResponse
+            const temp={}
+            Object.assign(temp, parsedJson)
+
+            aiNodeInstance.outData={...aiNodeInstance.outData,
+                ...temp
+            }
+            
             await aiNodeInstance.save()
+            const recheckingInstance = await NodeInstance.findById(aiNodeInstance._id)
+            console.log('rechecking saved insatnce : ',recheckingInstance);
+            
+            console.log('aiNodeInstance after saving : ',aiNodeInstance);
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             this.handleNextDependingNodeExecution(node._id)
         } catch (error) {
@@ -1309,6 +1345,7 @@ export default class Executor {
             console.log('someLocalVariable : ', someLocalVariable);
 
             const weather = (24 + (Math.random() * 10));
+            //TODO_URGENT
             // const toolInstance = await ToolInstance.create({
             //     workflowInstanceId: this.workflowInstanceId,
             //     toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e97"),
@@ -1337,6 +1374,7 @@ export default class Executor {
             message: `data fetched by serpApi for query : ${query},it is a school created by harkirat singh sir for enginnering students`
         }
 
+        //TODO_URGENT
         const toolInstance = await ToolInstance.create({
             workflowInstanceId: this.workflowInstanceId,
             toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e95"),
@@ -1359,6 +1397,7 @@ export default class Executor {
     async wikipediaFn(topicName: string) {
         const wikipediaResponse = `data from wikipedia about topic ${topicName},it is a school for enginnering students satrted by great developer`
 
+        //TODO_URGENT
         const toolInstance = await ToolInstance.create({
             workflowInstanceId: this.workflowInstanceId,
             toolId: new mongoose.Types.ObjectId("68d7cefcaae905ddddf38e96"),

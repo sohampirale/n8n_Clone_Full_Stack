@@ -28,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "bun": "^1.2.23",
     "dotenv": "^17.2.2",
+    "mongosh": "^2.5.8",
     "typescript": "^5.9.2"
   }
 }

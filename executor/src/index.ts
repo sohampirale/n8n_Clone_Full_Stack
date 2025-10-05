@@ -141,6 +141,7 @@ async function telegramSendMessageAndWaitToolWorker(){
                             toolInstance.waiting=false;
                             toolInstance.waitingIdentifier=null
                             await toolInstance?.save()
+                            delete obj[toolInstanceId]
                         }
                         resolve(`message received  after waiting for response : ${text}`)
                     } else {

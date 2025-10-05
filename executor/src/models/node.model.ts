@@ -67,7 +67,8 @@ const nodeSchema=new Schema({
 
 const nodeInstanceSchema= new Schema({
   workflowInstanceId:{
-    type:String,
+    type:ObjectId,
+    ref:"WorkflowInstance",
     required:true
   },
   nodeId:{
