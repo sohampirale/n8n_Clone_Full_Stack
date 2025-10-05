@@ -266,7 +266,7 @@ export async function updateWorkflow(req: Request, res: Response) {
         if (requestedNodes[j].nodeId) continue;
 
         //checking if all the prerequisites of requestedNodes[j] are already created
-        let { prerequisiteNodesIdentityNos, nodeActionId, data } = requestedNodes[j]
+        let { prerequisiteNodesIdentityNos, nodeActionId, data,credentialId } = requestedNodes[j]
 
         if (!prerequisiteNodesIdentityNos) {
           return res.status(400).json(
@@ -306,7 +306,8 @@ export async function updateWorkflow(req: Request, res: Response) {
           workflowId: existingWorkflow._id,
           data,
           prerequisiteNodes: prerequisiteNodesDBIds,
-          triggerId
+          triggerId,
+          credentialId
         })
 
         requestedNodes[j].nodeId = node._id

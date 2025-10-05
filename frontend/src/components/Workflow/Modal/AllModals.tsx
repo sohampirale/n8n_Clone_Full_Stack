@@ -261,12 +261,12 @@ export function TelegramOnMessageModal({ doubleClickedNode, workflow, setWorkflo
     )
 }
 
-export function TelegramSendMessageModal({ doubleClickedNode, workflow, setWorkflow,allFetchedData }: { doubleClickedNode: any, workflow: any, setWorkflow: any ,allFetchedData:any}) {
+export function TelegramSendMessageModal({ doubleClickedNode, workflow, setWorkflow, allFetchedData }: { doubleClickedNode: any, workflow: any, setWorkflow: any, allFetchedData: any }) {
     const [chat_id, setChatId] = useState("")
     const [text, setText] = useState("")
     const [selectedTelegramCredential, setSelectedTelegramCredential] = useState("")
-    const userCredentials=allFetchedData?.userCredentials
-    
+    const userCredentials = allFetchedData?.userCredentials
+
     useEffect(() => {
         console.log('inside useEffect');
 
@@ -406,11 +406,309 @@ export function TelegramSendMessageModal({ doubleClickedNode, workflow, setWorkf
         <>
             <input type="text" value={chat_id ?? ""} onChange={handleChatIdChange} />
             <input type="text" value={text ?? ""} onChange={handleTextChange} />
-            <label >Select Telegram Credential for this node action</label>
 
+            <label >Select Telegram Credential for this node action</label>
             <select value={selectedTelegramCredential} onChange={handleSetTelegramCredential}>
                 {userCredentials && userCredentials.map((credential: any) => {
                     if (credential.credentialForm.name == 'telegram') {
+                        return (
+                            < option key={credential._id} value={credential._id}>
+                                {JSON.stringify(credential)}
+                            </option>
+                        )
+                    }
+                })}
+            </select >
+        </>
+    )
+}
+
+export function GmailSendEmailModal({ doubleClickedNode, workflow, setWorkflow, allFetchedData }: { doubleClickedNode: any, workflow: any, setWorkflow: any, allFetchedData: any }) {
+    const [subject, setSubject] = useState("")
+    const [html, setHtml] = useState("")
+    const [to, setTo] = useState("")
+    const [from, setFrom] = useState("")
+    const userCredentials = allFetchedData?.userCredentials
+    const [selectedResendCredential, setSelectedResendCredential] = useState("")
+
+
+    useEffect(() => {
+        console.log('inside useEffect');
+
+        try {
+            const requestedNodes = workflow?.requestedNodes
+            if (requestedNodes) {
+                let requestedNode = requestedNodes.filter((node: any) => {
+                    return node.identityNo == doubleClickedNode.id
+                })
+
+                if (requestedNode && requestedNode.length != 0) {
+                    requestedNode = requestedNode[0]
+                    let data = requestedNode.data
+                    if (data) {
+                        const subject = data.subject
+                        const to = data.to
+                        const html = data.html
+                        const from = data.from
+                        const selectedResendCredential = requestedNode.credentialId
+
+                        if (subject) {
+                            setSubject(subject)
+                        } else setSubject('')
+
+                        if (to) {
+                            setTo(to)
+                        } else setTo("")
+
+                        if (html) {
+                            setHtml(html)
+                        } else {
+                            setHtml("")
+                        }
+
+                        if (from) {
+                            setFrom(from)
+                        } else {
+                            setFrom("")
+                        }
+
+                        if(selectedResendCredential){
+                            setSelectedResendCredential(selectedResendCredential)
+                        } else {
+                            if(userCredentials){
+                                let gmailCredential =userCredentials.filter((credential)=>credential.credentialForm.name=='gmail')
+                                if(gmailCredential && gmailCredential.length!=0){
+                                    setSelectedResendCredential(gmailCredential[0]._id)
+                                }
+                            }
+                        }
+
+
+                    } else {
+                        const subject = ""
+                        const to = ""
+                        const html = ""
+                        const from = ""
+
+                        let gmailCredential =userCredentials.filter((credential)=>credential.credentialForm.name=='gmail')
+
+                        if(gmailCredential && gmailCredential.length!=0){
+                            const selectedResendCredential=gmailCredential[0]._id
+                            setSelectedResendCredential(selectedResendCredential)
+                            requestedNode.credentialId=selectedResendCredential
+                        }
+
+                        setSubject(subject)
+                        setTo(to)
+                        setHtml(html)
+                        setFrom(from)
+
+                        data = {
+                            subject,
+                            to,
+                            html,
+                            from,
+                            position: doubleClickedNode.position
+                        }
+                        requestedNode.data = data
+                    }
+
+                    setWorkflow({
+                        ...workflow
+                    })
+                }
+            }
+        } catch (error) {
+
+        }
+    }, [doubleClickedNode.id])
+
+    function handleChangeTo(e: any) {
+        const to = e.target.value
+        setTo(to)
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.to = to
+                data.subject = subject
+                data.from = from
+                data.html = html
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    html,
+                    to,
+                    from,
+                    subject
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+    function handleChangeFrom(e: any) {
+        const from = e.target.value
+        setFrom(from)
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.to = to
+                data.subject = subject
+                data.from = from
+                data.html = html
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    html,
+                    to,
+                    from,
+                    subject
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+    function handleChangeSubject(e: any) {
+        const subject = e.target.value
+        setSubject(subject)
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.to = to
+                data.subject = subject
+                data.from = from
+                data.html = html
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    html,
+                    to,
+                    from,
+                    subject
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+    function handleChangeHTML(e: any) {
+        const html = e.target.value
+        setHtml(html)
+        const requestedNodes = workflow?.requestedNodes
+        let requestedNode = requestedNodes.filter((node: any) => {
+            return node.identityNo == doubleClickedNode.id
+        })
+        if (requestedNode && requestedNode.length != 0) {
+            requestedNode = requestedNode[0]
+            console.log('Requested node found from workflow.requestedNodes : ', requestedNode);
+            let data = requestedNode.data
+            if (data) {
+                data.position = doubleClickedNode.position
+                data.to = to
+                data.subject = subject
+                data.from = from
+                data.html = html
+            } else {
+                data = {
+                    position: doubleClickedNode.position,
+                    html,
+                    to,
+                    from,
+                    subject
+                }
+                requestedNode.data = data
+            }
+            console.log('updated requestedNode : ', requestedNode);
+
+            setWorkflow({
+                ...workflow
+            })
+            console.log('workflow updated');
+        } else {
+            console.log('requestedNode not found in the workflow');
+        }
+    }
+
+    function handleSetResendCredential(event: any) {
+        console.log('event.target.value  : ', event.target.value);
+        setSelectedResendCredential(event.target.value)
+        const selectedResendCredential = event.target.value
+        const requestedTrigger = workflow?.requestedTrigger
+        if (requestedTrigger) {
+            requestedTrigger.credentialId = selectedResendCredential
+            if (requestedTrigger.data) {
+                requestedTrigger.data.position = doubleClickedNode.position
+            } else {
+                requestedTrigger.data = {
+                    position: doubleClickedNode.position
+                }
+            }
+            setWorkflow({
+                ...workflow
+            })
+        }
+
+    }
+
+
+
+    return (
+        <>
+            <input type="text" value={to} onChange={handleChangeTo} />
+            <input type="text" value={from} onChange={handleChangeFrom} />
+            <input type="text" value={subject} onChange={handleChangeSubject} />
+            <input type="text" value={html} onChange={handleChangeHTML} />
+
+            <label >Select Telegram Credential for this node action</label>
+            <select value={selectedResendCredential} onChange={handleSetResendCredential}>
+                {userCredentials && userCredentials.map((credential: any) => {
+                    if (credential.credentialForm.name == 'gmail') {
                         return (
                             < option key={credential._id} value={credential._id}>
                                 {JSON.stringify(credential)}

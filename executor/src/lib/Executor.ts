@@ -161,7 +161,7 @@ export default class Executor {
                     console.log('node instance to be started is : action:gmail_send_email');
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
-                    this.gmail_send_email(allSolelyDependentNodes[i]._id, inData);
+                    this.gmail_send_email(allSolelyDependentNodes[i], inData);
                 } else if (nodeActionName == 'telegram_send_message_and_wait_for_response') {
                     // const node= await Node.aggregate()
                     //all checks that are personal to the telegram_send_message_and_wait_for_response
@@ -554,13 +554,13 @@ export default class Executor {
                 executeSuccess: true
             })
 
-            // let { to, from, subject, html } = node.data
+            let { to, from, subject, html } = node.data
             //:TODO uncommment line above and remove lines below
 
-            let to = 'sohampirale20504@gmail.com'
-            let from = "Acme <onboarding@resend.dev>"
-            let subject = "This is email from n8n_clone"
-            let html = "Hey this is n8n_clone sending you email"
+            // let to = 'sohampirale20504@gmail.com'
+            // let from = "Acme <onboarding@resend.dev>"
+            // let subject = "This is email from n8n_clone"
+            // let html = "Hey this is n8n_clone sending you email"
 
             if (!to || !from || !subject || !html) {
                 console.log('Received gmail_send_email node has insufficient data');
