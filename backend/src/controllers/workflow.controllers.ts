@@ -202,7 +202,8 @@ export async function updateWorkflow(req: Request, res: Response) {
 
     const {
       triggerActionId: receivedTriggerActionId,
-      data
+      data,
+      credentialId:credentialIdTrigggerStr
     } = requestedTrigger
 
     //creating trigger object
@@ -214,7 +215,7 @@ export async function updateWorkflow(req: Request, res: Response) {
     }
 
     const triggerActionId = new mongoose.Types.ObjectId(receivedTriggerActionId)
-
+    const credentialIdTrigger = new mongoose.Types.ObjectId(credentialIdTrigggerStr)
     const triggerActionDB = await TriggerAction.findById(triggerActionId)
 
     if (!triggerActionDB) {
@@ -245,6 +246,7 @@ export async function updateWorkflow(req: Request, res: Response) {
       triggerActionId,
       workflowId: existingWorkflow._id,
       owner:userId,
+      credentialId:credentialIdTrigger,
       data: data ?? {}
     })
 
@@ -299,11 +301,10 @@ export async function updateWorkflow(req: Request, res: Response) {
         if (!allPrerequisiteNodesCreated) {
           continue;
         }
-
         const node = await Node.create({
           nodeActionId,
           workflowId: existingWorkflow._id,
-          data: {},
+          data,
           prerequisiteNodes: prerequisiteNodesDBIds,
           triggerId
         })

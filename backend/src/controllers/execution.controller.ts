@@ -298,6 +298,33 @@ async function startNewTelegramConversation(userId: mongoose.Schema.Types.Object
             $unwind: {
                 path: "$triggerAction"
             }
+        },{
+            $lookup:{
+                from:"credentials",
+                foreignField:"_id",
+                localField:"credentialFormId",
+                as:"credential",
+                pipeline:[
+                    {
+                        $lookup:{
+                            from:"credentialForms",
+                            foreignField:"_id",
+                            localField:"credentialFormId",
+                            as:"credentialForm"
+                        }
+                    },{
+                        $unwind:{
+                            path:"$credentialForm",
+                            preserveNullAndEmptyArrays:true
+                        }
+                    }
+                ]
+            }
+        },{
+            $unwind:{
+                path:"$credential",
+                preserveNullAndEmptyArrays:true
+            }
         }
     ])
 
@@ -305,6 +332,7 @@ async function startNewTelegramConversation(userId: mongoose.Schema.Types.Object
 
     for (let i = 0; i < allTriggers.length; i++) {
         if (allTriggers[i]?.triggerAction?.name == 'trigger:telegram_on_message') {
+            //TODO add check here for checking if the trigger node has attached credential or not
             console.log('workflow with trigger_telegram_on_message found');
             try {
                 const workflowInstance = await WorkflowInstance.create({

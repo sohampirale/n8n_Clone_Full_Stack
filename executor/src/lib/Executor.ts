@@ -74,6 +74,7 @@ export default class Executor {
             ['wikipedia_search', this.wikipediaFn],
             ["telegram_send_message_and_wait_for_response", this.telegram_send_message_and_wait_for_response_toolFN]
         ])
+        this.waitingToolInstances=new Map()
 
         console.log('workflowInstanceId : ', workflowInstanceId);
         console.log('triggerInstanceId : ', triggerInstanceId);
@@ -155,7 +156,7 @@ export default class Executor {
                     console.log('node instance to be started is : action:telegram_send_message');
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
                     console.log('inData received : ', inData);
-                    this.telegram_send_message(allSolelyDependentNodes[i]._id)
+                    this.telegram_send_message(allSolelyDependentNodes[i],inData)
                 } else if (nodeActionName == 'gmail_send_email') {
                     console.log('node instance to be started is : action:gmail_send_email');
                     const inData = await this.inDataProducer(allSolelyDependentNodes[i]._id)
@@ -207,60 +208,13 @@ export default class Executor {
      * 9.call handleNextDependingNodeExecution
      */
 
-    async telegram_send_message(nodeIdStr: string, inData: any) {
-        console.log('inside telegram_send_message');
+    async telegram_send_message(node: any, inData: any) {
+        console.log('inside telegram_send_message node : ',node);
 
         try {
 
-            const nodeId = new mongoose.Types.ObjectId(nodeIdStr)
+            const nodeId = new mongoose.Types.ObjectId(node?._id)
 
-            let node = await Node.aggregate([{
-                $match: {
-                    _id: nodeId
-                }
-            }, {
-                $lookup: {
-                    from: "nodeactions",
-                    foreignField: "_id",
-                    localField: "nodeActionId",
-                    as: "nodeAction"
-                }
-            }, {
-                $unwind: {
-                    path: "$nodeAction",
-                    preserveNullAndEmptyArrays: true
-                }
-            }, {
-                $lookup: {
-                    from: "credentials",
-                    foreignField: "_id",
-                    localField: "credentialId",
-                    as: "credential",
-                    pipeline: [{
-                        $lookup: {
-                            from: "credentialforms",
-                            foreignField: "_id",
-                            localField: "credentialFormId",
-                            as: "credentialForm"
-                        }
-                    }, {
-                        $unwind: {
-                            path: "$credentialForm",
-                            preserveNullAndEmptyArrays: true
-                        }
-                    }]
-                }
-            }, {
-                $unwind: {
-                    path: "$credential",
-                    preserveNullAndEmptyArrays: true
-                }
-            }])
-
-            if (!node || node.length == 0) {
-                throw new Error('Node not found with given nodeId for telegram_send_message')
-            }
-            node = node[0]
 
             const nodeInstance = await NodeInstance.create({
                 workflowInstanceId: this.workflowInstanceId,
@@ -283,9 +237,9 @@ export default class Executor {
                 throw new Error('bot_token not foud in the telegram credential attached to telegram_send_message node')
             }
 
-            // let {chat_id,text}=node.data
+            let {chat_id,text}=node.data
             //:TODO uncomment line above and remove line below
-            let chat_id = '940083925', text = 'Hello sir, this message is sent by n8n_clone using telegram_send_message node'
+            // let chat_id = '940083925', text = 'Hello sir, this message is sent by n8n_clone using telegram_send_message node'
 
 
             if (!chat_id || !text) {
@@ -324,7 +278,7 @@ export default class Executor {
             } catch (error) {
 
             }
-            this.handleNextDependingNodeExecution(nodeIdStr)
+            this.handleNextDependingNodeExecution(node._id)
         }
     }
 

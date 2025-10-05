@@ -1,7 +1,7 @@
-import { TelegramOnMessageModal, WebhookFormModal } from "./AllModals"
+import { TelegramOnMessageModal, TelegramSendMessageModal, WebhookFormModal } from "./AllModals"
 
 export default function Modal({doubleClickedNode,setShowModal,workflow,setWorkflow,allFetchedData}:{doubleClickedNode:any,setShowModal:any,workflow:any,setWorkflow:any,allFetchedData:any}){
-    console.log('inside Modal allFetchedData : ',allFetchedData);
+    console.log('inside Modal doubleClickedNode: ',doubleClickedNode);
     
     const getModalContent=()=>{
         const type=doubleClickedNode.type
@@ -9,6 +9,8 @@ export default function Modal({doubleClickedNode,setShowModal,workflow,setWorkfl
             return <WebhookFormModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow}/>
         }else if(type=='trigger:telegram_on_message'){
             return <TelegramOnMessageModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow} allFetchedData={allFetchedData}/>
+        } else if(type=='telegram_send_message'){
+            return <TelegramSendMessageModal doubleClickedNode={doubleClickedNode} workflow={workflow} setWorkflow={setWorkflow} allFetchedData={allFetchedData}/>
         }
         else return (<>Requested modal not yet formed</>)
     }

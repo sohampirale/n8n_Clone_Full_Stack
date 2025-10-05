@@ -34,6 +34,10 @@ const triggerSchema=new Schema({
     ref:"Workflow",
     required:true
   },
+  credentialId:{
+    type:ObjectId,
+    ref:"Credential"
+  },
   owner:{
     type:ObjectId,
     ref:"User",
